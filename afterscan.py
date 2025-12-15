@@ -37,6 +37,9 @@ from tkinter import ttk
 import logging
 import queue
 import platform
+import time
+from datetime import datetime
+import threading
 
 # Due to how python works, logging code needs to be initialized here, so that AfterScan classes all use the same logger
 # Global logger instance (used for the root logger)
@@ -119,6 +122,9 @@ from job_manager import JobManager
 from tooltip import Tooltips
 from define_rectangle import DefineRectangle
 from helpers import RollingAverage, FPSTracker, CustomJsonEncoder, is_a_number, empty_queue
+from application_services import AppStateStore, EventBus
+from ui_manager import UIManager
+from constants import (EXIT_APP, END_TOKEN, LAST_ITEM_TOKEN, CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, FONT_SIZE, MAIN_WIN, APP_VERSION, BATCH_JOB_LIST)
 
 try:
     import requests
@@ -135,15 +141,20 @@ class AfterScanApp:
     This class is configured via its __init__ method and is kept clean
     of command-line arguments (sys.argv) for easy testing.
     """
-    def __init__(self, cli_args):
+    def __init__(self, cli_args, store: AppStateStore):
         """
         Initializes the application with validated parameters.
         """
         self.cli_args = cli_args
 
         """ Global variables as attribute classes."""
+        # --- Shared state store ---
+        self.store = store
+        self.event_bus = store.get_state(EVENT_BUS)
+        store.update_state(APP_VERSION, __version__)
         # --- Configuration ---
         self.config_manager = None
+        self.ignore_config = store.get_state(IGNORE_CONFIG)
         # --- Templates ---
         self.template_manager = None
         # --- Batch job list ---
@@ -172,6 +183,9 @@ class AfterScanApp:
         self.is_linux = False
         self.is_mac = False
 
+        # Subscribe to actions originating from the UI
+        self.bus.subscribe(EXIT_APP, self._exit_app)
+
 
     def display_window_title(self):
         job_name = self.batch_job_list.get_job_list_name()
@@ -182,6 +196,7 @@ class AfterScanApp:
 
     def initialize_basics(self):
         self.win = tk.Tk()  # Create main window, store it in 'win'
+        self.store.update_state(MAIN_WIN, self.win)
 
         # Get screen size - maxsize gives the usable screen size
         _, screen_height = self.win.maxsize()
@@ -196,6 +211,8 @@ class AfterScanApp:
             self.font_size = 8
             self.preview_width = 500
             self.preview_height = 375
+
+        self.store.update_state(FONT_SIZE, self.font_size)    # Update shared store
 
         self.display_window_title()  # setting title of the window
         
@@ -243,7 +260,6 @@ class AfterScanApp:
                 last_consent_date = datetime.today()
                 self.config_manager.set_last_consent_date(last_consent_date.isoformat())
                 self.config_manager.set_user_consent("yes" if consent else "no")
-
 
     def multiprocessing_init(self):
 
@@ -314,7 +330,25 @@ class AfterScanApp:
                 "It is not mandatory for the application to run; "
                 "Frame stabilization and cropping will still work, "
                 "video generation will not")
-        
+
+    def _exit_app(self):  # Exit Application
+        # Terminate threads
+        # frame_encoding_event.set()
+        for i in range(0, self.num_threads):
+            self.frame_encoding_queue.put((END_TOKEN, 0))
+            logging.debug("Inserting end token to encoding queue")
+
+        # TODO: Check using the build-in function works fine. Before we were countign internally via active_threads var
+        num_active = threading.active_count()
+        while num_active > 0:
+            self.win.update()
+            logging.debug(f"Waiting for threads to exit, {num_active} pending")
+            time.sleep(0.2)
+            num_active = threading.active_count()
+        logging.debug(f"All threads completed, exiting.")
+
+        self.win.destroy()
+
     def run(self):
         print(self.config)
 
@@ -332,6 +366,7 @@ class AfterScanApp:
         self.template_manager = TemplateManager.initialize(self.script_dir)
         """Create and initialize ConfigurationManager."""
         self.config_manager = ConfigurationManager.initialize(self.script_dir)
+        self.store.update_state(CONFIG_MANAGER, self.config_manager)
         if self.config_manager.load_configuration():
             self.config_manager.set_active_project(self.config_manager.get_source_dir())
         else:   # No configuration exist, assign hardcoded values to some critical attributes
@@ -342,6 +377,7 @@ class AfterScanApp:
             self.config_manager.set_active_project(self.script_dir)
 
         self.batch_job_list = JobManager.initialize(self.script_dir)
+        self.store.update_state(BATCH_JOB_LIST, self.batch_job_list)
 
         self.initialize_basics()
 
@@ -357,6 +393,7 @@ class AfterScanApp:
         # Try to detect if ffmpeg is installed
         self.initialize_ffmpeg()
 
+        # Create main UI
         build_ui()
         win.config(cursor="watch")  # Set cursor to hourglass
         widget_status_update()
@@ -506,11 +543,18 @@ if __name__ == "__main__":
     try:
         # Step 1: Parse the arguments from the command line
         args = parse_args()
+
+        # Step 2: Create the single instance of the State Store (the shared object)
+        shared_store = AppStateStore()
+
+        # Step 3: Create the event bus to communicat eevents among modules
+        event_bus = EventBus()
+        shared_store.update_state(EVENT_BUS, event_bus)
+
+        # Step 4: Instantiate the application with the parsed arguments
+        app = AfterScanApp(args, shared_store)
         
-        # Step 2: Instantiate the application with the parsed arguments
-        app = AfterScanApp(args)
-        
-        # Step 3: Run the application's core logic
+        # Step 5: Run the application's core logic
         app.run()
         print("Finalized successfully.")
         
