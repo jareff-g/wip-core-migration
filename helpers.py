@@ -30,27 +30,6 @@ from job_manager import JobEntry
 from configuration_manager import ProjectConfigEntry
 
 
-# --- Static functions ---
-# Define a function for
-# identifying a Digit
-def is_a_number(string):
-    # Make a regular expression
-    # for identifying a digit
-    regex = '^[0-9]+$'
-    # pass the regular expression
-    # and the string in search() method
-    if (re.search(regex, string)):
-        return True
-    else:
-        return False
-
-
-def empty_queue(q):
-    while not q.empty():
-        item = q.get()
-        logging.debug(f"Emptying queue: Got {item[0]}")
-
-
 # --- Utility classes ---
 class FPSTracker:
     """
@@ -154,3 +133,43 @@ class CustomJsonEncoder(json.JSONEncoder):
             
         # 3. For all other types, use the default encoder behavior
         return super().default(obj)
+    
+
+# --- Static functions ---
+# Define a function for
+# identifying a Digit
+def is_a_number(string):
+    # Make a regular expression
+    # for identifying a digit
+    regex = '^[0-9]+$'
+    # pass the regular expression
+    # and the string in search() method
+    if (re.search(regex, string)):
+        return True
+    else:
+        return False
+
+
+def empty_queue(q):
+    while not q.empty():
+        item = q.get()
+        logging.debug(f"Emptying queue: Got {item[0]}")
+
+
+def generate_dict_hash(dictionary: Dict[str, Any]) -> str:
+    """
+    Generates a consistent SHA256 hash from a dictionary containing custom objects.
+    
+    The CustomJsonEncoder handles the serialization of JobEntry and datetime objects.
+    """
+    
+    # 1. Serialize the dictionary using the custom encoder
+    #    sort_keys=True is CRITICAL for consistent hashing across runs.
+    serialized_dict = json.dumps(
+        dictionary, 
+        sort_keys=True, 
+        cls=CustomJsonEncoder # <-- This is the key change!
+    ).encode('utf-8')
+    
+    # 2. Generate and return the hash
+    return hashlib.sha256(serialized_dict).hexdigest()

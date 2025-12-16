@@ -22,7 +22,27 @@ __status__ = "Development"
 
 import logging
 from typing import Dict, List, Callable, Any
-from constants import (EXIT_APP, END_TOKEN, LAST_ITEM_TOKEN, CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, FONT_SIZE, MAIN_WIN)
+# Event bus constants
+from constants import (EXIT_APP, START_CONVERT)
+# Application constants
+from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, JOB_LIST_NAME_LENGTH,
+                       JOB_LIST_DESCRIPTION_LENGTH)
+# Shared Store constants
+from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
+                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGTH, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
+                       UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
+                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
+                       ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
+                       ROTATION_ANGLE, STABILIZATION_THRESHOLD, LOW_CONTRAST_CUSTOM_TEMPLATE, 
+                       EXTENDED_STABILIZATION, CUSTOM_TEMPLATE_DEFINED, CUSTOM_TEMPLATE_NAME, 
+                       CUSTOM_TEMPLATE_EXPECTED_POS, CUSTOM_TEMPLATE_FILENAME, PERFORM_CROPPING, 
+                       PERFORM_DENOISE, PERFORM_SHARPNESS, PERFORM_GAMMA_CORRECTION, GAMMA_CORRECTION_VALUE, 
+                       GENERATE_VIDEO, VIDEO_FILENAME, VIDEO_TITLE, SKIP_FRAME_REGENERATION, FFMPEG_PRESET, 
+                       FORCE_4_3, FORCE_16_9, FRAME_FILL_TYPE, CROP_RECTANGLE, PERFORM_STABILIZATION, 
+                       STABILIZATION_SHIFT_X, STABILIZATION_SHIFT_Y, PERFORM_ROTATION, VIDEO_FPS, 
+                       VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
+                       PRECISE_TEMPLATE_MATCH)
+
 
 # --- 1. The Centralized State Store (Data Access) ---
 
@@ -45,6 +65,17 @@ class AppStateStore:
             MAIN_WIN: None,
             CONFIG_MANAGER: None,
             IGNORE_CONFIG: False,
+            CONFIG_FROM_FILE: True,
+            PREVIEW_WIDTH: 0,
+            PREVIEW_HEIGTH: 0,
+            TOOLTIPS: None,
+            BIG_SIZE: True,
+            SCRIPT_DIR: '',
+            UI_INIT_DONE: False,
+            PROJECT_NAME: 'No project',
+            SAVE_BG: None,
+            SAVE_FG: None,
+            CURRENT_FRAME: 0
         }
 
     def get_state(self, key: str):

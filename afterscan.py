@@ -124,7 +124,29 @@ from define_rectangle import DefineRectangle
 from helpers import RollingAverage, FPSTracker, CustomJsonEncoder, is_a_number, empty_queue
 from application_services import AppStateStore, EventBus
 from ui_manager import UIManager
-from constants import (EXIT_APP, END_TOKEN, LAST_ITEM_TOKEN, CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, FONT_SIZE, MAIN_WIN, APP_VERSION, BATCH_JOB_LIST)
+# Event bus constants
+from constants import (EXIT_APP, START_CONVERT)
+# Application constants
+from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, JOB_LIST_NAME_LENGTH,
+                       JOB_LIST_DESCRIPTION_LENGTH)
+# Shared Store constants
+# Shared Store constants
+from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
+                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGTH, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
+                       UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
+                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
+                       ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
+                       ROTATION_ANGLE, STABILIZATION_THRESHOLD, LOW_CONTRAST_CUSTOM_TEMPLATE, 
+                       EXTENDED_STABILIZATION, CUSTOM_TEMPLATE_DEFINED, CUSTOM_TEMPLATE_NAME, 
+                       CUSTOM_TEMPLATE_EXPECTED_POS, CUSTOM_TEMPLATE_FILENAME, PERFORM_CROPPING, 
+                       PERFORM_DENOISE, PERFORM_SHARPNESS, PERFORM_GAMMA_CORRECTION, GAMMA_CORRECTION_VALUE, 
+                       GENERATE_VIDEO, VIDEO_FILENAME, VIDEO_TITLE, SKIP_FRAME_REGENERATION, FFMPEG_PRESET, 
+                       FORCE_4_3, FORCE_16_9, FRAME_FILL_TYPE, CROP_RECTANGLE, PERFORM_STABILIZATION, 
+                       STABILIZATION_SHIFT_X, STABILIZATION_SHIFT_Y, PERFORM_ROTATION, VIDEO_FPS, 
+                       VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
+                       PRECISE_TEMPLATE_MATCH)
+
+
 
 try:
     import requests
@@ -185,14 +207,7 @@ class AfterScanApp:
 
         # Subscribe to actions originating from the UI
         self.bus.subscribe(EXIT_APP, self._exit_app)
-
-
-    def display_window_title(self):
-        job_name = self.batch_job_list.get_job_list_name()
-        title = f"{__module__} {__version__}"
-        if job_name != '':
-            title += f" - {job_name}"
-        self.win.title(title)  # setting title of the window
+        self.bus.subscribe(START_CONVERT, self._start_convert)
 
     def initialize_basics(self):
         self.win = tk.Tk()  # Create main window, store it in 'win'
@@ -213,8 +228,13 @@ class AfterScanApp:
             self.preview_height = 375
 
         self.store.update_state(FONT_SIZE, self.font_size)    # Update shared store
+        self.store.update_state(PREVIEW_WIDTH, self.preview_width)    # Update shared store
+        self.store.update_state(PREVIEW_HEIGTH, self.preview_height)    # Update shared store
+        self.store.update_state(BIG_SIZE, self.big_size)    # Update shared store
 
+        """ delete_this
         self.display_window_title()  # setting title of the window
+        """
         
         if self.config_manager.get_window_pos() != '':
             win.geometry(f"+{self.config_manager.get_window_pos().split('+', 1)[1]}")
@@ -227,6 +247,7 @@ class AfterScanApp:
 
         # Init ToolTips
         self.as_tooltips = Tooltips(font_size)
+        self.store.update_state(TOOLTIPS, self.as_tooltips)
 
         # TODO: Move to processing class
         # Init rolling Averages
@@ -349,12 +370,147 @@ class AfterScanApp:
 
         self.win.destroy()
 
+    # TODO: Complete start_convert adapted to new code
+    def _start_convert(self):
+        global convert_loop_exit_requested, convert_loop_running
+        global generate_video
+        global video_writer
+        global source_dir_file_list
+        global target_video_filename
+        global current_frame, start_frame
+        global encode_all_frames
+        global frames_to_encode
+        global ffmpeg_success, ffmpeg_encoding_status
+        global frame_from_str, frame_to_str
+        global project_name
+        global batch_job_running
+        global current_job_entry
+        global csv_filename, csv_path_name
+        global current_bad_frame_index
+
+        if convert_loop_running:
+            convert_loop_exit_requested = True
+            convert_loop_running = False
+        else:
+            if len(source_dir_file_list) == 0:
+                tk.messagebox.showwarning(
+                    "No source frames",
+                    "No source frames loaded.\r\n"
+                    "Please load source frames and try again.")
+                return
+            if not skip_frame_regeneration.get() and not delete_detected_bad_frames():
+                return
+            # Enforce minimum value for Gamma in case user clicks starts rigth after having manually entered a zero in GC box
+            gamma_enforce_min_value()
+            # Save current project status
+            config_manager.save_configuration()
+            batch_job_list.save_to_file(job_list_filename)
+            # Empty FPS register list
+            fps_tracker.reset()
+            # Centralize 'frames_to_encode' update here
+            if encode_all_frames.get():
+                start_frame = 0
+                #frames_to_encode = len(source_dir_file_list)
+                frames_to_encode = get_frame_number_from_filename(source_dir_file_list[-1]) - get_frame_number_from_filename(source_dir_file_list[0]) + 1
+            else:
+                start_frame = int(frame_from_str.get())
+                frames_to_encode = int(frame_to_str.get()) - int(frame_from_str.get()) + 1
+                if start_frame + frames_to_encode > len(source_dir_file_list):
+                    frames_to_encode = len(source_dir_file_list) - start_frame
+            current_frame = start_frame
+            if frames_to_encode <= 1:
+                tk.messagebox.showwarning(
+                    "No frames match range",
+                    "No frames to encode.\r\n"
+                    "The range specified (current frame - number of frames to "
+                    "encode) does not match any frame.\r\n"
+                    "Please review your settings and try again.")
+                return
+            if not is_valid_template_size():
+                tk.messagebox.showwarning(
+                    "Invalid template",
+                    "Template associated with this jos is bigger the search area.\r\n"
+                    "Please redefine template and try again.")
+                return
+            if batch_job_running:
+                start_batch_btn.config(text="Stop batch", bg='red', fg='white')
+                # Disable all buttons in main window
+                widget_status_update(DISABLED, start_batch_btn)
+            else:
+                Go_btn.config(text="Stop", bg='red', fg='white')
+                # Disable all buttons in main window
+                widget_status_update(DISABLED, Go_btn)
+            FrameSync_Viewer_popup_update_widgets(DISABLED)
+            win.update()
+
+            config_manager.set_film_type(film_type.get())
+            if config_manager.get_generate_video():
+                target_video_filename = video_filename_str.get()
+                name, ext = os.path.splitext(target_video_filename)
+                if target_video_filename == "":   # Assign default if no filename
+                    target_video_filename = (
+                        "AfterScan-" +
+                        datetime.now().strftime("%Y_%m_%d-%H-%M-%S") + ".mp4")
+                    video_filename_str.set(target_video_filename)
+                elif ext not in ['.mp4', '.MP4', '.mkv', '.MKV']:     # ext == "" does not work if filename contains dots ('Av. Manzanares')
+                    target_video_filename += ".mp4"
+                    video_filename_str.set(target_video_filename)
+                elif os.path.isfile(os.path.join(video_target_dir_str.get(), target_video_filename)):
+                    if not batch_job_running:
+                        error_msg = (target_video_filename + " already exist in target "
+                                    "folder. Overwrite?")
+                        if not tk.messagebox.askyesno("Error!", error_msg):
+                            generation_exit()
+                            return
+
+            convert_loop_running = True
+
+            if not generate_video.get() or not skip_frame_regeneration.get():
+                # Check if CSV option selected
+                if generate_csv:
+                    csv_filename = video_filename_str.get()
+                    name, ext = os.path.splitext(csv_filename)
+                    if name == "":  # Assign default if no filename
+                        name = "AfterScan-"
+                    csv_filename = datetime.now().strftime("%Y_%m_%d-%H-%M-%S_") + name + '.csv'
+                    csv_path_name = resources_dir
+                    if csv_path_name == "":
+                        csv_path_name = os.getcwd()
+                    csv_path_name = os.path.join(csv_path_name, csv_filename)
+                    # Write header
+                    with open(csv_path_name, 'w') as csv_file:
+                        csv_file.write("Frame, Missing rows, Threshold, Num loops, Match level, move_x, move_y\n")
+                match_level_average.clear()
+                horizontal_offset_average.clear()
+                move_x_average.clear()
+                move_y_average.clear()
+                # Disable manual stabilize popup widgets
+                FrameSync_Viewer_popup_update_widgets(DISABLED)
+                # Multiprocessing: Start all threads before encoding
+                start_threads()
+                win.after(1, frame_generation_loop)
+            elif generate_video.get():
+                # first check if resolution has been set
+                if resolution_dict[config_manager.get_video_resolution()] == '':
+                    if not batch_job_running:
+                        logging.error("Error, no video resolution selected")
+                        tk.messagebox.showerror("Error!", "Please specify video resolution.")
+                    else:
+                        logging.error(f"Cannot generate video {target_video_filename}, no video resolution selected")
+                    generation_exit(success = False)
+                else:
+                    ffmpeg_success = False
+                    ffmpeg_encoding_status = ffmpeg_state.Pending
+                    win.after(1000, video_generation_loop)
+
+
     def run(self):
         print(self.config)
 
         """Set CWD to folder when scrit is running."""
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         os.chdir(self.script_dir) 
+        self.store.update_state(SCRIPT_DIR, self.script_dir)
 
         log_level = getattr(logging, self.config.log_level.upper(), None)
         if not isinstance(log_level, int):
@@ -413,7 +569,7 @@ class AfterScanApp:
         if copy_templates_from_temp:
             copy_jpg_files(temp_dir, resources_dir)
 
-        ui_init_done = True
+        self.store.update_state(UI_INIT_DONE, True)
 
         # Disable a few items that should be not operational without source folder
         if len(config_manager.get_source_dir()) == 0:
