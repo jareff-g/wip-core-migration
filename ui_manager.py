@@ -48,9 +48,22 @@ from constants import (EXIT_APP, START_CONVERT)
 from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, JOB_LIST_NAME_LENGTH,
                        JOB_LIST_DESCRIPTION_LENGTH)
 # Shared Store constants
+# Shared Store constants
 from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
                        MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGTH, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
-                       UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME)
+                       UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
+                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
+                       ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
+                       ROTATION_ANGLE, STABILIZATION_THRESHOLD, LOW_CONTRAST_CUSTOM_TEMPLATE, 
+                       EXTENDED_STABILIZATION, CUSTOM_TEMPLATE_DEFINED, CUSTOM_TEMPLATE_NAME, 
+                       CUSTOM_TEMPLATE_EXPECTED_POS, CUSTOM_TEMPLATE_FILENAME, PERFORM_CROPPING, 
+                       PERFORM_DENOISE, PERFORM_SHARPNESS, PERFORM_GAMMA_CORRECTION, GAMMA_CORRECTION_VALUE, 
+                       GENERATE_VIDEO, VIDEO_FILENAME, VIDEO_TITLE, SKIP_FRAME_REGENERATION, FFMPEG_PRESET, 
+                       FORCE_4_3, FORCE_16_9, FRAME_FILL_TYPE, CROP_RECTANGLE, PERFORM_STABILIZATION, 
+                       STABILIZATION_SHIFT_X, STABILIZATION_SHIFT_Y, PERFORM_ROTATION, VIDEO_FPS, 
+                       VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
+                       PRECISE_TEMPLATE_MATCH)
+
 
 
 
@@ -154,9 +167,6 @@ class UIManager:
         self.video_fps_dropdown_selected.set(self.store.get_state(VIDEO_FPS))
         self.set_fps(self.store.get_state(VIDEO_FPS))
         self.resolution_dropdown_selected.set(self.store.get_state(VIDEO_RESOLUTION))
-
-
-
 
     # Refresh config class from UI
     def update_config_from_ui(self):
@@ -351,6 +361,25 @@ class UIManager:
     # --- User Interface widget action methods ---
     # --------------------------------------------
 
+    def generic_widget_command(self, event=None):
+        """
+        Generic command for widgets that need to update the configuration manager
+        and potentially refresh the UI.
+        Legacy code has dedicated commands for each widget, we'll try to simplify this.
+        Most of the time th epurpose was to update the configuration manager, and refresh the UI. Possible alternatives are:
+        - Refresh all configuration items on any widget change
+        - Refresh all configuration items only before saving
+        - Refresh state of all widgets on each update
+        For now we keep the first option, to be decided later
+        """
+        # Update the configuration manager with the current UI state
+        self.update_config_from_ui()
+        # If the UI is fully initialized, trigger a display update
+        if self.store.get_state(UI_INIT_DONE):
+            self.win.after(5, scale_display_update)
+        widget_status_update(NORMAL)
+        FrameSync_Viewer_popup_update_widgets(NORMAL)
+
     def save_named_job_list(self):
         global job_list, job_list_hash, job_list_filename
         start_dir = os.path.split(job_list_filename)[0]  
@@ -430,6 +459,24 @@ class UIManager:
         self.config_manager.set_generate_video(self.generate_video.get())
         widget_status_update(NORMAL)
         FrameSync_Viewer_popup_update_widgets(NORMAL)
+
+    def update_frame_from(self, event):
+        if len(self.frame_from_str.get()) == 0 or self.frame_from_str.get() == '0' or event.num == 2:
+            self.frame_from_str.set(self.store.get_state(CURRENT_FRAME))
+        else:
+            if self.store.get_state(UI_INIT_DONE):
+                select_scale_frame(self.frame_from_str.get())
+            self.frame_slider.set(self.frame_from_str.get())
+        self.config_manager.set_frame_from(self.frame_from_str.get())
+
+    def update_frame_to(self, event):
+        if len(self.frame_to_str.get()) == 0 or self.frame_to_str.get() == '0' or event.num == 2:
+            self.frame_to_str.set(self.store.get_state(CURRENT_FRAME))
+        else:
+            if self.store.get_state(UI_INIT_DONE):
+                select_scale_frame(self.frame_to_str.get())
+            self.frame_slider.set(self.frame_to_str.get())
+        self.config_manager.set_frame_to(self.frame_to_str.get())
 
     # --------------------------------------
     # --- User Interface building blocks ---
@@ -593,7 +640,7 @@ class UIManager:
         self.tootips.add(self.frames_source_dir, "Directory where the source frames are located")
 
         self.source_folder_btn = Button(self.source_folder_frame, text='Source', width=6,
-                                height=1, command=set_source_folder,
+                                height=1, command=self.set_source_folder,
                                 activebackground='green',
                                 activeforeground='white', wraplength=80, font=("Arial", self.font_size))
         self.source_folder_btn.pack(side=LEFT)
@@ -648,216 +695,218 @@ class UIManager:
         postprocessing_row += 1
 
         # Check box to select encoding of all frames
-        encode_all_frames = tk.BooleanVar(value=False)
-        encode_all_frames_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='Encode all frames',
-            variable=encode_all_frames, onvalue=True, offvalue=False,
-            command=encode_all_frames_selection, width=14, font=("Arial", self.font_size))
-        encode_all_frames_checkbox.grid(row=postprocessing_row, column=0,
+        self.encode_all_frames = tk.BooleanVar(value=False)
+        self.encode_all_frames_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='Encode all frames',
+            variable=self.encode_all_frames, onvalue=True, offvalue=False,
+            command=self.generic_widget_command, width=14, font=("Arial", self.font_size))
+        self.encode_all_frames_checkbox.grid(row=postprocessing_row, column=0,
                                             columnspan=3, sticky=W)
-        self.tootips.add(encode_all_frames_checkbox, "If selected, all frames in source folder will be encoded")
+        self.tootips.add(self.encode_all_frames_checkbox, "If selected, all frames in source folder will be encoded")
         postprocessing_row += 1
 
         # Entry to enter start/end frames
-        frames_to_encode_label = tk.Label(postprocessing_frame,
+        self.frames_to_encode_label = tk.Label(self.postprocessing_frame,
                                         text='Frame range:',
                                         width=12, font=("Arial", self.font_size))
-        frames_to_encode_label.grid(row=postprocessing_row, column=0, columnspan=2, sticky=W)
-        frame_from_str = tk.StringVar(value=0)
-        frame_from_entry = Entry(postprocessing_frame, textvariable=frame_from_str, width=5, borderwidth=1, font=("Arial", self.font_size))
-        frame_from_entry.grid(row=postprocessing_row, column=1, sticky=W)
-        frame_from_entry.config(state=NORMAL)
-        frame_from_entry.bind("<Double - Button - 1>", update_frame_from)
-        frame_from_entry.bind("<Button - 2>", update_frame_from)
-        frame_from_entry.bind('<<Paste>>', lambda event, entry=frame_from_entry: on_paste_all_entries(event, entry))
-        frame_from_entry.bind("<FocusOut>", update_frame_from)
-        self.tootips.add(frame_from_entry, "First frame to be processed, if not encoding the entire set")
-        frame_to_str = tk.StringVar(value=0)
-        frames_separator_label = tk.Label(postprocessing_frame, text='to', width=2, font=("Arial", self.font_size))
-        frames_separator_label.grid(row=postprocessing_row, column=1)
-        frame_to_entry = Entry(postprocessing_frame, textvariable=frame_to_str, width=5, borderwidth=1, font=("Arial", self.font_size))
-        frame_to_entry.grid(row=postprocessing_row, column=1, sticky=E)
-        frame_to_entry.config(state=NORMAL)
-        frame_to_entry.bind("<Double - Button - 1>", update_frame_to)
-        frame_to_entry.bind("<Button - 2>", update_frame_to)
-        frame_to_entry.bind('<<Paste>>', lambda event, entry=frame_to_entry: on_paste_all_entries(event, entry))
-        frame_to_entry.bind("<FocusOut>", update_frame_to)
-        self.tootips.add(frame_to_entry, "Last frame to be processed, if not encoding the entire set")
+        self.frames_to_encode_label.grid(row=postprocessing_row, column=0, columnspan=2, sticky=W)
+        self.frame_from_str = tk.StringVar(value=0)
+        self.frame_from_entry = Entry(self.postprocessing_frame, textvariable=self.frame_from_str, width=5, borderwidth=1, font=("Arial", self.font_size))
+        self.frame_from_entry.grid(row=postprocessing_row, column=1, sticky=W)
+        self.frame_from_entry.config(state=NORMAL)
+        self.frame_from_entry.bind("<Double - Button - 1>", self.update_frame_from)
+        self.frame_from_entry.bind("<Button - 2>", self.update_frame_from)
+        self.frame_from_entry.bind('<<Paste>>', lambda event, entry=self.frame_from_entry: on_paste_all_entries(event, entry))
+        self.frame_from_entry.bind("<FocusOut>", self.update_frame_from)
+        self.tootips.add(self.frame_from_entry, "First frame to be processed, if not encoding the entire set")
+
+        self.frame_to_str = tk.StringVar(value=0)
+        self.frames_separator_label = tk.Label(self.postprocessing_frame, text='to', width=2, font=("Arial", self.font_size))
+        self.frames_separator_label.grid(row=postprocessing_row, column=1)
+        self.frame_to_entry = Entry(self.postprocessing_frame, textvariable=self.frame_to_str, width=5, borderwidth=1, font=("Arial", self.font_size))
+        self.frame_to_entry.grid(row=postprocessing_row, column=1, sticky=E)
+        self.frame_to_entry.config(state=NORMAL)
+        self.frame_to_entry.bind("<Double - Button - 1>", self.update_frame_to)
+        self.frame_to_entry.bind("<Button - 2>", self.update_frame_to)
+        self.frame_to_entry.bind('<<Paste>>', lambda event, entry=self.frame_to_entry: on_paste_all_entries(event, entry))
+        self.frame_to_entry.bind("<FocusOut>", self.update_frame_to)
+        self.tootips.add(self.frame_to_entry, "Last frame to be processed, if not encoding the entire set")
 
         postprocessing_row += 1
 
         # Check box to do rotate image
-        perform_rotation = tk.BooleanVar(value=False)
-        perform_rotation_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='Rotate image:',
-            variable=perform_rotation, onvalue=True, offvalue=False, width=11,
-            command=perform_rotation_selection, font=("Arial", self.font_size))
-        perform_rotation_checkbox.grid(row=postprocessing_row, column=0,
+        self.perform_rotation = tk.BooleanVar(value=False)
+        self.perform_rotation_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='Rotate image:',
+            variable=self.perform_rotation, onvalue=True, offvalue=False, width=11,
+            command=self.generic_widget_command, font=("Arial", self.font_size))
+        self.perform_rotation_checkbox.grid(row=postprocessing_row, column=0,
                                             columnspan=1, sticky=W)
-        perform_rotation_checkbox.config(state=NORMAL)
-        self.tootips.add(perform_rotation_checkbox, "Rotate generated frames")
+        self.perform_rotation_checkbox.config(state=NORMAL)
+        self.tootips.add(self.perform_rotation_checkbox, "Rotate generated frames")
 
         # Spinbox to select rotation angle
-        rotation_angle_str = tk.StringVar(value=str(0))
-        #rotation_angle_selection_aux = postprocessing_frame.register(rotation_angle_selection)
-        rotation_angle_spinbox = tk.Spinbox(
-            postprocessing_frame,
-            command=rotation_angle_selection, width=5,
-            textvariable=rotation_angle_str, from_=-5, to=5,
+        self.rotation_angle_str = tk.StringVar(value=str(0))
+        self.rotation_angle_spinbox = tk.Spinbox(
+            self.postprocessing_frame,
+            command=self.generic_widget_command, width=5,
+            textvariable=self.rotation_angle_str, from_=-5, to=5,
             format="%.1f", increment=0.1, font=("Arial", self.font_size))
-        rotation_angle_spinbox.grid(row=postprocessing_row, column=1, sticky=W)
-        rotation_angle_spinbox.bind("<FocusOut>", rotation_angle_spinbox_focus_out)
-        self.tootips.add(rotation_angle_spinbox, "Angle to use when rotating frames")
+        self.rotation_angle_spinbox.grid(row=postprocessing_row, column=1, sticky=W)
+        self.rotation_angle_spinbox.bind("<FocusOut>", self.generic_widget_command)
+        self.tootips.add(self.rotation_angle_spinbox, "Angle to use when rotating frames")
         #rotation_angle_selection('down')
-        rotation_angle_label = tk.Label(postprocessing_frame,
+        self.rotation_angle_label = tk.Label(self.postprocessing_frame,
                                         text='°',
                                         width=1, font=("Arial", self.font_size))
-        rotation_angle_label.grid(row=postprocessing_row, column=1)
-        rotation_angle_label.config(state=NORMAL)
+        self.rotation_angle_label.grid(row=postprocessing_row, column=1)
+        self.rotation_angle_label.config(state=NORMAL)
         postprocessing_row += 1
 
         ### Stabilization controls
         # Custom film perforation template
-        custom_stabilization_btn = Button(postprocessing_frame,
+        # TODO: Copy adn adapt select_custom_template
+        self.custom_stabilization_btn = Button(self.postprocessing_frame,
                                         text='Define custom template',
                                         width=18, height=1,
                                         command=select_custom_template,
                                         activebackground='green',
                                         activeforeground='white', font=("Arial", self.font_size))
-        custom_stabilization_btn.config(relief=SUNKEN if template_manager.get_active_type() == 'Custom' else RAISED)
-        custom_stabilization_btn.grid(row=postprocessing_row, column=0, columnspan=2, padx=5, pady=5, sticky=W)
-        self.tootips.add(custom_stabilization_btn,
+        self.custom_stabilization_btn.config(relief=SUNKEN if template_manager.get_active_type() == 'Custom' else RAISED)
+        self.custom_stabilization_btn.grid(row=postprocessing_row, column=0, columnspan=2, padx=5, pady=5, sticky=W)
+        self.tootips.add(self.custom_stabilization_btn,
                     "Define a custom template for this project (vs the automatic template defined by AfterScan)")
 
-        low_contrast_custom_template = tk.BooleanVar(value=False)
-        low_contrast_custom_template_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='Low contrast helper',
-            variable=low_contrast_custom_template, onvalue=True, offvalue=False, width=16,
-            command=low_contrast_custom_template_selection, font=("Arial", self.font_size))
-        low_contrast_custom_template_checkbox.grid(row=postprocessing_row, column=1,
+        self.low_contrast_custom_template = tk.BooleanVar(value=False)
+        self.low_contrast_custom_template_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='Low contrast helper',
+            variable=self.low_contrast_custom_template, onvalue=True, offvalue=False, width=16,
+            command=self.generic_widget_command, font=("Arial", self.font_size))
+        self.low_contrast_custom_template_checkbox.grid(row=postprocessing_row, column=1,
                                             columnspan=2, sticky=E)
-        self.tootips.add(low_contrast_custom_template_checkbox, "Activate when defining a custom template using a low contrast frame")
+        self.tootips.add(self.low_contrast_custom_template_checkbox, "Activate when defining a custom template using a low contrast frame")
 
         postprocessing_row += 1
 
         # Check box to do stabilization or not
-        perform_stabilization = tk.BooleanVar(value=False)
-        perform_stabilization_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='Stabilize',
-            variable=perform_stabilization, onvalue=True, offvalue=False, width=7,
-            command=perform_stabilization_selection, font=("Arial", self.font_size))
-        perform_stabilization_checkbox.grid(row=postprocessing_row, column=0,
+        self.perform_stabilization = tk.BooleanVar(value=False)
+        self.perform_stabilization_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='Stabilize',
+            variable=self.perform_stabilization, onvalue=True, offvalue=False, width=7,
+            command=self.generic_widget_command, font=("Arial", self.font_size))
+        self.perform_stabilization_checkbox.grid(row=postprocessing_row, column=0,
                                             columnspan=1, sticky=W)
-        self.tootips.add(perform_stabilization_checkbox, "Stabilize generated frames. Sprocket hole is used as common reference, it needs to be clearly visible")
+        self.tootips.add(self.perform_stabilization_checkbox, "Stabilize generated frames. Sprocket hole is used as common reference, it needs to be clearly visible")
         # Label to display the match level of current frame to template
-        stabilization_threshold_match_label = Label(postprocessing_frame, width=4, borderwidth=1, relief='sunken', font=("Arial", self.font_size))
-        stabilization_threshold_match_label.grid(row=postprocessing_row, column=0, sticky=E)
-        self.tootips.add(stabilization_threshold_match_label, "Dynamically displays the match quality of the sprocket hole template. Green is good, orange acceptable, red is bad")
+        self.stabilization_threshold_match_label = Label(self.postprocessing_frame, width=4, borderwidth=1, relief='sunken', font=("Arial", self.font_size))
+        self.stabilization_threshold_match_label.grid(row=postprocessing_row, column=0, sticky=E)
+        self.tootips.add(self.stabilization_threshold_match_label, "Dynamically displays the match quality of the sprocket hole template. Green is good, orange acceptable, red is bad")
 
         # Extended search checkbox (replace radio buttons for fast/precise stabilization)
-        extended_stabilization = tk.BooleanVar(value=False)
-        extended_stabilization_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='Extend',
-            variable=extended_stabilization, onvalue=True, offvalue=False, width=6,
-            command=extended_stabilization_selection, font=("Arial", self.font_size))
+        self.extended_stabilization = tk.BooleanVar(value=False)
+        self.extended_stabilization_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='Extend',
+            variable=self.extended_stabilization, onvalue=True, offvalue=False, width=6,
+            command=self.generic_widget_command, font=("Arial", self.font_size))
         #extended_stabilization_checkbox.grid(row=postprocessing_row, column=1, columnspan=1, sticky=W)
-        extended_stabilization_checkbox.forget()
-        self.tootips.add(extended_stabilization_checkbox, "Extend the area where AfterScan looks for sprocket holes. In some cases this might help")
+        self.extended_stabilization_checkbox.forget()
+        self.tootips.add(self.extended_stabilization_checkbox, "Extend the area where AfterScan looks for sprocket holes. In some cases this might help")
 
         # Stabilization shift: Since film might not be centered around hole(s) this gives the option to move it up/down
         # Spinbox for gamma correction
-        stabilization_shift_label = tk.Label(postprocessing_frame, text='Offset X/Y:',
+        self.stabilization_shift_label = tk.Label(self.postprocessing_frame, text='Offset X/Y:',
                                             width=14, font=("Arial", self.font_size))
-        stabilization_shift_label.grid(row=postprocessing_row, column=1, columnspan=1, sticky=E)
+        self.stabilization_shift_label.grid(row=postprocessing_row, column=1, columnspan=1, sticky=E)
 
-        stabilization_shift_x_value = tk.IntVar(value=0)
-        stabilization_shift_x_spinbox = tk.Spinbox(postprocessing_frame, width=3, command=select_stabilization_shift_x,
-            textvariable=stabilization_shift_x_value, from_=-150, to=150, increment=-5, font=("Arial", self.font_size))
-        stabilization_shift_x_spinbox.grid(row=postprocessing_row, column=2, sticky=W)
-        self.tootips.add(stabilization_shift_x_spinbox, "Allows to shift the frame left or right after stabilization "
+        self.stabilization_shift_x_value = tk.IntVar(value=0)
+        self.stabilization_shift_x_spinbox = tk.Spinbox(self.postprocessing_frame, width=3, command=self.generic_widget_command,
+            textvariable=self.stabilization_shift_x_value, from_=-150, to=150, increment=-5, font=("Arial", self.font_size))
+        self.stabilization_shift_x_spinbox.grid(row=postprocessing_row, column=2, sticky=W)
+        self.tootips.add(self.stabilization_shift_x_spinbox, "Allows to shift the frame left or right after stabilization "
                                     "(to compensate for films where the frame is not centered around the hole/holes)")
-        stabilization_shift_x_spinbox.bind("<FocusOut>", select_stabilization_shift_x)
+        self.stabilization_shift_x_spinbox.bind("<FocusOut>", self.generic_widget_command)
 
-        stabilization_shift_y_value = tk.IntVar(value=0)
-        stabilization_shift_y_spinbox = tk.Spinbox(postprocessing_frame, width=3, command=select_stabilization_shift_y,
-            textvariable=stabilization_shift_y_value, from_=-150, to=150, increment=-5, font=("Arial", self.font_size))
-        stabilization_shift_y_spinbox.grid(row=postprocessing_row, column=2, sticky=E)
-        self.tootips.add(stabilization_shift_y_spinbox, "Allows to shift the frame up or down after stabilization "
+        self.stabilization_shift_y_value = tk.IntVar(value=0)
+        self.stabilization_shift_y_spinbox = tk.Spinbox(self.postprocessing_frame, width=3, command=self.generic_widget_command,
+            textvariable=self.stabilization_shift_y_value, from_=-150, to=150, increment=-5, font=("Arial", self.font_size))
+        self.stabilization_shift_y_spinbox.grid(row=postprocessing_row, column=2, sticky=E)
+        self.tootips.add(self.stabilization_shift_y_spinbox, "Allows to shift the frame up or down after stabilization "
                                     "(to compensate for films where the frame is not centered around the hole/holes)")
-        stabilization_shift_y_spinbox.bind("<FocusOut>", select_stabilization_shift_y)
+        self.stabilization_shift_y_spinbox.bind("<FocusOut>", self.select_stabilization_shift_y)
 
         postprocessing_row += 1
 
         ### Cropping controls
         # Check box to do cropping or not
-        cropping_btn = Button(postprocessing_frame, text='Define crop area',
+        # TODO: Copy adn adapt select_cropping_area
+        self.cropping_btn = Button(self.postprocessing_frame, text='Define crop area',
                             width=12, height=1, command=select_cropping_area,
                             activebackground='green', activeforeground='white',
                             wraplength=120, font=("Arial", self.font_size))
-        cropping_btn.grid(row=postprocessing_row, column=0, sticky=E)
-        self.tootips.add(cropping_btn, "Open popup window to define the cropping rectangle")
+        self.cropping_btn.grid(row=postprocessing_row, column=0, sticky=E)
+        self.tootips.add(self.cropping_btn, "Open popup window to define the cropping rectangle")
 
-        perform_cropping = tk.BooleanVar(value=False)
-        perform_cropping_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='Crop', variable=perform_cropping,
-            onvalue=True, offvalue=False, command=perform_cropping_selection,
+        self.perform_cropping = tk.BooleanVar(value=False)
+        self.perform_cropping_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='Crop', variable=self.perform_cropping,
+            onvalue=True, offvalue=False, command=self.generic_widget_command,
             width=4, font=("Arial", self.font_size))
-        perform_cropping_checkbox.grid(row=postprocessing_row, column=1, sticky=W)
-        self.tootips.add(perform_cropping_checkbox, "Crop generated frames to the user-defined limits ('Define crop area' button)")
+        self.perform_cropping_checkbox.grid(row=postprocessing_row, column=1, sticky=W)
+        self.tootips.add(self.perform_cropping_checkbox, "Crop generated frames to the user-defined limits ('Define crop area' button)")
 
-        force_4_3_crop = tk.BooleanVar(value=False)
-        force_4_3_crop_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='4:3', variable=force_4_3_crop,
-            onvalue=True, offvalue=False, command=force_4_3_selection,
+        self.force_4_3_crop = tk.BooleanVar(value=False)
+        self.force_4_3_crop_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='4:3', variable=self.force_4_3_crop,
+            onvalue=True, offvalue=False, command=self.generic_widget_command,
             width=4, font=("Arial", self.font_size))
-        force_4_3_crop_checkbox.grid(row=postprocessing_row, column=1, sticky=E)
-        self.tootips.add(force_4_3_crop_checkbox, "Enforce 4:3 aspect ratio when defining the cropping rectangle")
+        self.force_4_3_crop_checkbox.grid(row=postprocessing_row, column=1, sticky=E)
+        self.tootips.add(self.force_4_3_crop_checkbox, "Enforce 4:3 aspect ratio when defining the cropping rectangle")
 
-        force_16_9_crop = tk.BooleanVar(value=False)
-        force_16_9_crop_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='16:9', variable=force_16_9_crop,
-            onvalue=True, offvalue=False, command=force_16_9_selection,
+        self.force_16_9_crop = tk.BooleanVar(value=False)
+        self.force_16_9_crop_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='16:9', variable=self.force_16_9_crop,
+            onvalue=True, offvalue=False, command=self.generic_widget_command,
             width=4, font=("Arial", self.font_size))
-        force_16_9_crop_checkbox.grid(row=postprocessing_row, column=2, sticky=W)
-        self.tootips.add(force_16_9_crop_checkbox, "Enforce 16:9 aspect ratio when defining the cropping rectangle")
+        self.force_16_9_crop_checkbox.grid(row=postprocessing_row, column=2, sticky=W)
+        self.tootips.add(self.force_16_9_crop_checkbox, "Enforce 16:9 aspect ratio when defining the cropping rectangle")
 
         postprocessing_row += 1
 
         # Check box to perform denoise
-        perform_denoise = tk.BooleanVar(value=False)
-        perform_denoise_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='Denoise', variable=perform_denoise,
-            onvalue=True, offvalue=False, command=perform_denoise_selection,
+        self.perform_denoise = tk.BooleanVar(value=False)
+        self.perform_denoise_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='Denoise', variable=self.perform_denoise,
+            onvalue=True, offvalue=False, command=self.generic_widget_command,
             font=("Arial", self.font_size))
-        perform_denoise_checkbox.grid(row=postprocessing_row, column=0, sticky=W)
-        self.tootips.add(perform_denoise_checkbox, "Apply denoise algorithm (using OpenCV's 'fastNlMeansDenoisingColored') to the generated frames")
+        self.perform_denoise_checkbox.grid(row=postprocessing_row, column=0, sticky=W)
+        self.tootips.add(self.perform_denoise_checkbox, "Apply denoise algorithm (using OpenCV's 'fastNlMeansDenoisingColored') to the generated frames")
 
         # Check box to perform sharpness
-        perform_sharpness = tk.BooleanVar(value=False)
-        perform_sharpness_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='Sharpen', variable=perform_sharpness,
-            onvalue=True, offvalue=False, command=perform_sharpness_selection,
+        self.perform_sharpness = tk.BooleanVar(value=False)
+        self.perform_sharpness_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='Sharpen', variable=self.perform_sharpness,
+            onvalue=True, offvalue=False, command=self.generic_widget_command,
             font=("Arial", self.font_size))
-        perform_sharpness_checkbox.grid(row=postprocessing_row, column=1, sticky=W)
-        self.tootips.add(perform_sharpness_checkbox, "Apply sharpen algorithm (using OpenCV's 'filter2D') to the generated frames")
+        self.perform_sharpness_checkbox.grid(row=postprocessing_row, column=1, sticky=W)
+        self.tootips.add(self.perform_sharpness_checkbox, "Apply sharpen algorithm (using OpenCV's 'filter2D') to the generated frames")
 
         # Check box to do gamma correction
-        perform_gamma_correction = tk.BooleanVar(value=False)
-        perform_gamma_correction_checkbox = tk.Checkbutton(
-            postprocessing_frame, text='GC:', variable=perform_gamma_correction, command=perform_gamma_correction_selection,
+        self.perform_gamma_correction = tk.BooleanVar(value=False)
+        self.perform_gamma_correction_checkbox = tk.Checkbutton(
+            self.postprocessing_frame, text='GC:', variable=self.perform_gamma_correction, command=self.generic_widget_command,
             onvalue=True, offvalue=False, font=("Arial", self.font_size))
-        perform_gamma_correction_checkbox.grid(row=postprocessing_row, column=2, sticky=W)
-        perform_gamma_correction_checkbox.config(state=NORMAL)
-        self.tootips.add(perform_gamma_correction_checkbox, "Apply gamma correction to the generated frames")
+        self.perform_gamma_correction_checkbox.grid(row=postprocessing_row, column=2, sticky=W)
+        self.perform_gamma_correction_checkbox.config(state=NORMAL)
+        self.tootips.add(self.perform_gamma_correction_checkbox, "Apply gamma correction to the generated frames")
 
         # Spinbox for gamma correction
-        gamma_correction_str = tk.StringVar(value="2.2")
-        gamma_correction_spinbox = tk.Spinbox(postprocessing_frame, width=3, command=select_gamma_correction_value,
-            textvariable=gamma_correction_str, from_=0.1, to=4, format="%.1f", increment=0.1, font=("Arial", self.font_size))
-        gamma_correction_spinbox.grid(row=postprocessing_row, column=2, sticky=E)
-        self.tootips.add(gamma_correction_spinbox, "Gamma correction value (default is 2.2, has to be greater than zero)")
+        self.gamma_correction_str = tk.StringVar(value="2.2")
+        self.gamma_correction_spinbox = tk.Spinbox(self.postprocessing_frame, width=3, command=self.generic_widget_command,
+            textvariable=self.gamma_correction_str, from_=0.1, to=4, format="%.1f", increment=0.1, font=("Arial", self.font_size))
+        self.gamma_correction_spinbox.grid(row=postprocessing_row, column=2, sticky=E)
+        self.tootips.add(self.gamma_correction_spinbox, "Gamma correction value (default is 2.2, has to be greater than zero)")
         # Bind focus-out event to enforce the minimum value
-        gamma_correction_spinbox.bind("<FocusOut>", gamma_enforce_min_value)
+        gamma_correction_spinbox.bind("<FocusOut>", self.generic_widget_command)
 
         postprocessing_row += 1
 
@@ -868,24 +917,25 @@ class UIManager:
         # And yes, in theory we could pick the missing fragment of the same frame by picking the picture of the
         # next/previous frame, BUT it is not given that it will be there, as the next/previous frame might have been
         # captured without the required part.
-        frame_fill_type = StringVar()
-        perform_fill_none_rb = Radiobutton(postprocessing_frame, text='No frame fill',
-                                        variable=frame_fill_type, value='none', font=("Arial", self.font_size))
-        perform_fill_none_rb.grid(row=postprocessing_row, column=0, sticky=W)
-        self.tootips.add(perform_fill_none_rb, "Badly aligned frames will be left with the missing part of the image black after stabilization")
-        perform_fill_fake_rb = Radiobutton(postprocessing_frame, text='Fake fill',
-                                        variable=frame_fill_type, value='fake', font=("Arial", self.font_size))
-        perform_fill_fake_rb.grid(row=postprocessing_row, column=1, sticky=W)
-        self.tootips.add(perform_fill_fake_rb, "Badly aligned frames will have the missing part of the image completed with a fragment of the next/previous frame after stabilization")
-        perform_fill_dumb_rb = Radiobutton(postprocessing_frame, text='Dumb fill',
-                                        variable=frame_fill_type, value='dumb', font=("Arial", self.font_size))
-        perform_fill_dumb_rb.grid(row=postprocessing_row, column=2, sticky=W)
+        self.frame_fill_type = StringVar()
+        self.perform_fill_none_rb = Radiobutton(self.postprocessing_frame, text='No frame fill',
+                                        variable=self.frame_fill_type, value='none', font=("Arial", self.font_size))
+        self.perform_fill_none_rb.grid(row=postprocessing_row, column=0, sticky=W)
+        self.tootips.add(self.perform_fill_none_rb, "Badly aligned frames will be left with the missing part of the image black after stabilization")
+        self.perform_fill_fake_rb = Radiobutton(self.postprocessing_frame, text='Fake fill',
+                                        variable=self.frame_fill_type, value='fake', font=("Arial", self.font_size))
+        self.perform_fill_fake_rb.grid(row=postprocessing_row, column=1, sticky=W)
+        self.tootips.add(self.perform_fill_fake_rb, "Badly aligned frames will have the missing part of the image completed with a fragment of the next/previous frame after stabilization")
+        self.perform_fill_dumb_rb = Radiobutton(self.postprocessing_frame, text='Dumb fill',
+                                        variable=self.frame_fill_type, value='dumb', font=("Arial", self.font_size))
+        self.perform_fill_dumb_rb.grid(row=postprocessing_row, column=2, sticky=W)
         self.tootips.add(perform_fill_dumb_rb, "Badly aligned frames will have the missing part of the image filled with the adjacent pixel row after stabilization")
-        frame_fill_type.set('fake')
+        self.frame_fill_type.set('fake')
 
         postprocessing_row += 1
 
-        # Define video generating area ************************************
+    def _init_video_generation_section(self):
+            # Define video generating area ************************************
         video_frame = LabelFrame(right_area_frame,
                                 text='Video generation',
                                 width=30, height=8, font=("Arial", self.font_size-2))

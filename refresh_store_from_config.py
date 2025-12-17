@@ -2,7 +2,7 @@
 ****************************************************************************************************************
 Class RefreshStoreFromConfig
 Refresh shared data store with the values in the provided project configuration.
-In AfterScan legacy code, thi swas done by 'def 'decode_project_config'.
+In AfterScan legacy code, this was done by 'def 'decode_project_config'.
 Original code was not only reading the config into global variables, it was also:
 - Updating the UI. With the new code that no longer makes sense, so after the shared 
   store is up to date, a bus event would have to be fired for the UI to update itself.
@@ -60,58 +60,30 @@ class RefreshStoreFromConfig:
         """
         self.config = config_source
         self.store = store_target
-        self.internal_store = {}
         self.is_initialized = False
-
-    def _load_settings(self):
-        """
-        Internal method to fetch relevant data from the configuration source
-        and structure it for the internal store.
-        """
-        settings = {}
-        
-        # 1. Load user settings
-        # Default to an empty list if not found, then convert to a set for fast lookup.
-        users = self.config.get_setting("allowed_users", [])
-        settings["users"] = set(users)
-        
-        # 2. Load a system flag
-        # Default to False if not found, then convert to a human-readable string.
-        feature_enabled = self.config.get_setting("experimental_feature", False)
-        settings["feature_status"] = "Enabled" if feature_enabled else "Disabled"
-        
-        # The structure is built incrementally and returned
-        return settings
 
     def refresh_store(self):
         """
         Public method to refresh the internal store state using the configuration.
         This simulates the core functionality of updating state.
         """
-        print("--- Refreshing Store State from Configuration ---")
+        logging.debug("--- Refreshing Store State from Configuration ---")
         try:
             new_data = self._load_settings()
             
             # Update the internal store
-            self.internal_store.update(new_data)
+            self.store.update(new_data)
             self.is_initialized = True
             
-            print("Store successfully updated.")
-            print(f"Users loaded: {len(self.internal_store.get('users', []))}")
-            print(f"Feature status: {self.internal_store.get('feature_status')}")
+            logging.debug("Store successfully updated.")
             
         except Exception as e:
             # Catch any issues during config reading or parsing
-            print(f"ERROR: Could not refresh store from configuration: {e}")
+            logging.debug(f"ERROR: Could not refresh store from configuration: {e}")
 
 
-
-
-
-def decode_project_config(self):        
-
+    def _load_settings(self):
         settings = {}
-        
         source_dir = self.config.get_project_source_dir()
         if source_dir != '':
             project_name = os.path.split(source_dir)[-1].replace(',', ';')
@@ -271,67 +243,18 @@ def decode_project_config(self):
         precise_template_match = self.config.get_precise_template_match()
         settings[PRECISE_TEMPLATE_MATCH] = precise_template_match
 
+        """ This code was there in the old decode_project_config. It might need to be put elsewhere.
+        if len(source_dir_file_list) > 0:
+            adjust_dimensions_based_on_frame()
 
+        widget_status_update(NORMAL)
+        FrameSync_Viewer_popup_update_widgets(NORMAL)
 
-    # Older code below
-    # TODO: Continue here
+        load_bad_frame_list()
 
-    aux_value = self.config.get_frame_fill_type()
-    frame_fill_type.set(aux_value)
+        win.update()
+        """
+        # The structure is built incrementally and returned
+        return settings
 
-    aux_value = self.config.get_generate_video()
-    generate_video.set(aux_value)
-    generate_video_selection()
-
-    aux_value = self.config.get_video_filename()
-    video_filename_str.set(aux_value)
-
-    aux_value = self.config.get_video_title()
-    video_title_str.set(aux_value)
-
-    # Snake case from the start
-    aux_value = self.config.get_skip_frame_regeneration()
-    skip_frame_regeneration.set(aux_value)
-
-    aux_value = self.config.get_ffmpeg_preset()
-    ffmpeg_preset.set(aux_value)
-
-    aux_value = self.config.get_perform_stabilization()
-    perform_stabilization.set(aux_value)
-
-    aux_value = self.config.get_stabilization_shift_y()
-    stabilization_shift_y_value.set(aux_value)
-
-    aux_value = self.config.get_stabilization_shift_x()
-    stabilization_shift_x_value.set(aux_value)
-
-    aux_value = self.config.get_perform_rotation()
-    perform_rotation.set(aux_value)
-
-    aux_value = self.config.get_video_fps()
-    video_fps = eval(aux_value)
-    video_fps_dropdown_selected.set(video_fps)
-    set_fps(str(video_fps))
-
-    aux_value = self.config.get_video_resolution()
-    resolution_dropdown_selected.set(aux_value)
-
-    aux_value = self.config.get_current_bad_frame_index()
-    current_bad_frame_index = aux_value
-
-    aux_value = self.config.get_user_defined_left_stripe_width_proportion()
-    user_defined_left_stripe_width_proportion = aux_value
-    # Don't really need to retrieve the config date, this is intended only to be written. But anyhow...
-
-    aux_value = self.config.get_precise_template_match()
-
-    if len(source_dir_file_list) > 0:
-        adjust_dimensions_based_on_frame()
-
-    widget_status_update(NORMAL)
-    FrameSync_Viewer_popup_update_widgets(NORMAL)
-
-    load_bad_frame_list()
-
-    win.update()
 
