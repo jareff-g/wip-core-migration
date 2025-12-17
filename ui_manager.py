@@ -35,6 +35,8 @@ from queue import Queue
 import logging
 import webbrowser
 import os
+import platform
+import subprocess as sp
 from dataclasses import asdict
 
 
@@ -477,6 +479,72 @@ class UIManager:
                 select_scale_frame(self.frame_to_str.get())
             self.frame_slider.set(self.frame_to_str.get())
         self.config_manager.set_frame_to(self.frame_to_str.get())
+
+    def set_video_target_folder(self):
+        video_target_dir = filedialog.askdirectory(
+            initialdir=self.video_target_dir_str.get(),
+            title="Select folder where to store generated video")
+
+        if not video_target_dir:
+            return
+        elif video_target_dir == self.store.get_state(SOURCE_DIR):
+            tk.messagebox.showerror(
+                "Error!",
+                "Video target folder cannot be the same as source folder.")
+            return
+        else:
+            self.video_target_dir_str.set(video_target_dir)
+            self.video_target_dir_entry.after(100, self.video_target_dir_entry.xview_moveto, 1)
+
+        self.config_manager.set_video_target_dir(self.video_target_dir_str.get())
+
+    def play_video(self):
+        target_video_filename = self.video_filename_str.get()
+        if not self.launch_video(os.path.join(self.video_target_dir_str.get(), target_video_filename)):
+            tk.messagebox.showerror(
+                f"Error launching video {os.path.join(self.video_target_dir_str.get(), target_video_filename)}",
+                "An error occurred while trying to launch the video.\r\n"
+                "Please check that a default video player is correctly installed "
+                "in your system.")
+
+
+    def launch_video(self, video_file_path):
+        """
+        Launches video playback using the default player of the operating system.
+
+        Args:
+            video_file_path (str): The full or relative path to the video file.
+        """
+        operating_system = platform.system()
+        
+        logging.debug(f"Trying to launch video '{video_file_path}' in OS {operating_system}")
+
+        try:
+            if operating_system == "Windows":
+                # Comando nativo de Windows para abrir un archivo con la aplicación predeterminada
+                os.startfile(video_file_path)
+                
+            elif operating_system == "Darwin":  # macOS
+                # Comando nativo de macOS para abrir archivos
+                sp.run(["open", video_file_path])
+                
+            elif operating_system == "Linux":
+                # Comando estándar de Linux (generalmente xdg-open o gnome-open)
+                # 'xdg-open' abrirá el archivo con la aplicación predeterminada
+                sp.run(["xdg-open", video_file_path])
+                
+            else:
+                logging.error(f"OS '{operating_system}' not supported for direct opening.")
+                return False
+
+            return True
+        except FileNotFoundError:
+            logging.error(f"Error: Default video player not found or the command '{video_file_path}' does not exist.")
+            return False
+        except Exception as e:
+            logging.error(f"An error occurred while trying to launch the video: {e}")
+            return False
+
 
     # --------------------------------------
     # --- User Interface building blocks ---
@@ -936,64 +1004,62 @@ class UIManager:
 
     def _init_video_generation_section(self):
             # Define video generating area ************************************
-        video_frame = LabelFrame(right_area_frame,
+        self.video_frame = LabelFrame(self.right_area_frame,
                                 text='Video generation',
                                 width=30, height=8, font=("Arial", self.font_size-2))
-        video_frame.pack(padx=2, pady=2, ipadx=5, expand=True, fill="both")
+        self.video_frame.pack(padx=2, pady=2, ipadx=5, expand=True, fill="both")
         video_row = 0
-        video_frame.grid_columnconfigure(0, weight=1)
-        video_frame.grid_columnconfigure(1, weight=1)
-        video_frame.grid_columnconfigure(2, weight=1)
+        self.video_frame.grid_columnconfigure(0, weight=1)
+        self.video_frame.grid_columnconfigure(1, weight=1)
+        self.video_frame.grid_columnconfigure(2, weight=1)
 
         # Check box to generate video or not
-        generate_video = tk.BooleanVar(value=False)
-        generate_video_checkbox = tk.Checkbutton(video_frame,
+        self.generate_video = tk.BooleanVar(value=False)
+        self.generate_video_checkbox = tk.Checkbutton(self.video_frame,
                                                 text='Video',
-                                                variable=generate_video,
+                                                variable=self.generate_video,
                                                 onvalue=True, offvalue=False,
-                                                command=generate_video_selection,
+                                                command=self.generic_widget_command,
                                                 width=5, font=("Arial", self.font_size))
-        generate_video_checkbox.grid(row=video_row, column=0, sticky=W, padx=5)
-        generate_video_checkbox.config(state=NORMAL if ffmpeg_installed
-                                    else DISABLED)
-        self.tootips.add(generate_video_checkbox, "Generate an MP4 video, once all frames have been processed")
+        self.generate_video_checkbox.grid(row=video_row, column=0, sticky=W, padx=5)
+        self.generate_video_checkbox.config(state=NORMAL)
+        self.tootips.add(self.generate_video_checkbox, "Generate an MP4 video, once all frames have been processed")
 
         # Check box to skip frame regeneration
-        skip_frame_regeneration = tk.BooleanVar(value=False)
-        skip_frame_regeneration_cb = tk.Checkbutton(
-            video_frame, text='Skip Frame regeneration',
-            variable=skip_frame_regeneration, onvalue=True, offvalue=False,
+        self.skip_frame_regeneration = tk.BooleanVar(value=False)
+        self.skip_frame_regeneration_cb = tk.Checkbutton(
+            self.video_frame, text='Skip Frame regeneration',
+            variable=self.skip_frame_regeneration, onvalue=True, offvalue=False,
             width=20, font=("Arial", self.font_size))
-        skip_frame_regeneration_cb.grid(row=video_row, column=1,
+        self.skip_frame_regeneration_cb.grid(row=video_row, column=1,
                                         columnspan=2, sticky=W, padx=5)
-        skip_frame_regeneration_cb.config(state=NORMAL if ffmpeg_installed
-                                        else DISABLED)
-        self.tootips.add(skip_frame_regeneration_cb, "If frames have ben already generated in a previous run, and you want to only generate the vieo, check this one")
+        self.skip_frame_regeneration_cb.config(state=NORMAL)
+        self.tootips.add(self.skip_frame_regeneration_cb, "If frames have ben already generated in a previous run, and you want to only generate the vieo, check this one")
 
         video_row += 1
 
         # Video target folder
-        video_target_dir_str = StringVar()
-        video_target_dir_entry = Entry(video_frame, textvariable=video_target_dir_str, width=30, borderwidth=1, font=("Arial", self.font_size))
-        video_target_dir_entry.grid(row=video_row, column=0, columnspan=2, sticky=W, padx=5)
-        video_target_dir_entry.bind('<<Paste>>', lambda event, entry=video_target_dir_entry: on_paste_all_entries(event, entry))
-        self.tootips.add(video_target_dir_entry, "Directory where the generated video will be stored")
+        self.video_target_dir_str = StringVar()
+        self.video_target_dir_entry = Entry(self.video_frame, textvariable=self.video_target_dir_str, width=30, borderwidth=1, font=("Arial", self.font_size))
+        self.video_target_dir_entry.grid(row=video_row, column=0, columnspan=2, sticky=W, padx=5)
+        self.video_target_dir_entry.bind('<<Paste>>', lambda event, entry=self.video_target_dir_entry: on_paste_all_entries(event, entry))
+        self.tootips.add(self.video_target_dir_entry, "Directory where the generated video will be stored")
 
-        video_target_folder_btn = Button(video_frame, text='Target', width=6,
-                                height=1, command=set_video_target_folder,
+        self.video_target_folder_btn = Button(self.video_frame, text='Target', width=6,
+                                height=1, command=self.set_video_target_folder,
                                 activebackground='green',
                                 activeforeground='white', wraplength=80, font=("Arial", self.font_size))
-        video_target_folder_btn.grid(row=video_row, column=2, columnspan=2, sticky=W, padx=5)
-        self.tootips.add(video_target_folder_btn, "Selects directory where the generated video will be stored")
+        self.video_target_folder_btn.grid(row=video_row, column=2, columnspan=2, sticky=W, padx=5)
+        self.tootips.add(self.video_target_folder_btn, "Selects directory where the generated video will be stored")
         video_row += 1
 
         # Video filename
         video_filename_str = StringVar()
-        video_filename_label = Label(video_frame, text='Video filename:', font=("Arial", self.font_size))
+        video_filename_label = Label(self.video_frame, text='Video filename:', font=("Arial", self.font_size))
         video_filename_label.grid(row=video_row, column=0, sticky=W, padx=5)
-        video_filename_name = Entry(video_frame, textvariable=video_filename_str, name="video_filename", 
-                                    validate="key", validatecommand=vcmd,
-                                    width=26 if big_size else 26, borderwidth=1, font=("Arial", self.font_size))
+        video_filename_name = Entry(self.video_frame, textvariable=video_filename_str, name="video_filename", 
+                                    validate="key", validatecommand=self.vcmd,
+                                    width=26 if self.big_size else 26, borderwidth=1, font=("Arial", self.font_size))
         video_filename_name.grid(row=video_row, column=1, columnspan=2, sticky=W, padx=5)
         video_filename_name.bind('<<Paste>>', lambda event, entry=video_filename_name: on_paste_all_entries(event, entry))
         self.tootips.add(video_filename_name, "Filename of video to be created")
@@ -1001,15 +1067,15 @@ class UIManager:
         video_row += 1
 
         # Video title (add title at the start of the video)
-        video_title_str = StringVar()
-        video_title_label = Label(video_frame, text='Video title:', font=("Arial", self.font_size))
-        video_title_label.grid(row=video_row, column=0, sticky=W, padx=5)
-        video_title_name = Entry(video_frame, textvariable=video_title_str, name="video_title", 
-                                validate="key", validatecommand=vcmd,
-                                width=26 if big_size else 26, borderwidth=1, font=("Arial", self.font_size))
-        video_title_name.grid(row=video_row, column=1, columnspan=2, sticky=W, padx=5)
-        video_title_name.bind('<<Paste>>', lambda event, entry=video_title_name: on_paste_all_entries(event, entry))
-        self.tootips.add(video_title_name, "Video title. If entered, a simple title sequence will be generated at the start of the video, using a sequence randomly selected from the same video, running at half speed")
+        self.video_title_str = StringVar()
+        self.video_title_label = Label(self.video_frame, text='Video title:', font=("Arial", self.font_size))
+        self.video_title_label.grid(row=video_row, column=0, sticky=W, padx=5)
+        self.video_title_name = Entry(self.video_frame, textvariable=self.video_title_str, name="video_title", 
+                                validate="key", validatecommand=self.vcmd,
+                                width=26 if self.big_size else 26, borderwidth=1, font=("Arial", self.font_size))
+        self.video_title_name.grid(row=video_row, column=1, columnspan=2, sticky=W, padx=5)
+        self.video_title_name.bind('<<Paste>>', lambda event, entry=self.video_title_name: on_paste_all_entries(event, entry))
+        self.tootips.add(self.video_title_name, "Video title. If entered, a simple title sequence will be generated at the start of the video, using a sequence randomly selected from the same video, running at half speed")
 
         video_row += 1
 
@@ -1030,214 +1096,203 @@ class UIManager:
         ]
 
         # datatype of menu text
-        video_fps_dropdown_selected = StringVar()
+        self.video_fps_dropdown_selected = StringVar()
 
         # initial menu text
-        video_fps_dropdown_selected.set("18")
+        self.video_fps_dropdown_selected.set("18")
 
         # Create FPS Dropdown menu
-        video_fps_frame = Frame(video_frame)
-        video_fps_frame.grid(row=video_row, column=0, sticky=W)
-        video_fps_label = Label(video_fps_frame, text='FPS:', font=("Arial", self.font_size))
-        video_fps_label.pack(side=LEFT, anchor=W, padx=5)
-        video_fps_label.config(state=DISABLED)
-        video_fps_dropdown = OptionMenu(video_fps_frame,
-                                        video_fps_dropdown_selected, *fps_list,
-                                        command=set_fps)
-        video_fps_dropdown.config(takefocus=1, font=("Arial", self.font_size))
-        video_fps_dropdown.pack(side=LEFT, anchor=E, padx=5)
-        video_fps_dropdown.config(state=DISABLED)
-        self.tootips.add(video_fps_dropdown, "Number of frames per second (FPS) of the video to be generated. Usually Super8 goes at 18 FPS, and Regular 8 at 16 FPS, although some cameras allowed to use other speeds (faster for smoother movement, slower for extended play time)")
+        self.video_fps_frame = Frame(self.video_frame)
+        self.video_fps_frame.grid(row=video_row, column=0, sticky=W)
+        self.video_fps_label = Label(self.video_fps_frame, text='FPS:', font=("Arial", self.font_size))
+        self.video_fps_label.pack(side=LEFT, anchor=W, padx=5)
+        self.video_fps_label.config(state=DISABLED)
+        self.video_fps_dropdown = OptionMenu(self.video_fps_frame,
+                                        self.video_fps_dropdown_selected, *fps_list,
+                                        command=self.set_fps)
+        self.video_fps_dropdown.config(takefocus=1, font=("Arial", self.font_size))
+        self.video_fps_dropdown.pack(side=LEFT, anchor=E, padx=5)
+        self.video_fps_dropdown.config(state=DISABLED)
+        self.tootips.add(self.video_fps_dropdown, "Number of frames per second (FPS) of the video to be generated. Usually Super8 goes at 18 FPS, and Regular 8 at 16 FPS, although some cameras allowed to use other speeds (faster for smoother movement, slower for extended play time)")
 
         # Create FFmpeg preset options
-        ffmpeg_preset_frame = Frame(video_frame)
-        ffmpeg_preset_frame.grid(row=video_row, column=1, columnspan=2, sticky=W, padx=5)
-        ffmpeg_preset = StringVar()
-        ffmpeg_preset_rb1 = Radiobutton(ffmpeg_preset_frame,
+        self.ffmpeg_preset_frame = Frame(self.video_frame)
+        self.ffmpeg_preset_frame.grid(row=video_row, column=1, columnspan=2, sticky=W, padx=5)
+        self.ffmpeg_preset = StringVar()
+        self.ffmpeg_preset_rb1 = Radiobutton(self.ffmpeg_preset_frame,
                                         text="Best quality (slow)",
-                                        variable=ffmpeg_preset, value='veryslow', font=("Arial", self.font_size))
-        ffmpeg_preset_rb1.pack(side=TOP, anchor=W, padx=5)
-        ffmpeg_preset_rb1.config(state=DISABLED)
-        self.tootips.add(ffmpeg_preset_rb1, "Best quality, but very slow encoding. Maps to the same ffmpeg option")
+                                        variable=self.ffmpeg_preset, value='veryslow', font=("Arial", self.font_size))
+        self.ffmpeg_preset_rb1.pack(side=TOP, anchor=W, padx=5)
+        self.ffmpeg_preset_rb1.config(state=DISABLED)
+        self.tootips.add(self.ffmpeg_preset_rb1, "Best quality, but very slow encoding. Maps to the same ffmpeg option")
 
-        ffmpeg_preset_rb2 = Radiobutton(ffmpeg_preset_frame, text="Medium",
-                                        variable=ffmpeg_preset, value='medium', font=("Arial", self.font_size))
-        ffmpeg_preset_rb2.pack(side=TOP, anchor=W, padx=5)
-        ffmpeg_preset_rb2.config(state=DISABLED)
-        self.tootips.add(ffmpeg_preset_rb2, "Compromise between quality and encoding speed. Maps to the same ffmpeg option")
-        ffmpeg_preset_rb3 = Radiobutton(ffmpeg_preset_frame,
+        self.ffmpeg_preset_rb2 = Radiobutton(self.ffmpeg_preset_frame, text="Medium",
+                                        variable=self.ffmpeg_preset, value='medium', font=("Arial", self.font_size))
+        self.ffmpeg_preset_rb2.pack(side=TOP, anchor=W, padx=5)
+        self.ffmpeg_preset_rb2.config(state=DISABLED)
+        self.tootips.add(self.ffmpeg_preset_rb2, "Compromise between quality and encoding speed. Maps to the same ffmpeg option")
+        self.ffmpeg_preset_rb3 = Radiobutton(self.ffmpeg_preset_frame,
                                         text="Fast (low quality)",
-                                        variable=ffmpeg_preset, value='veryfast', font=("Arial", self.font_size))
-        ffmpeg_preset_rb3.pack(side=TOP, anchor=W, padx=5)
-        ffmpeg_preset_rb3.config(state=DISABLED)
-        self.tootips.add(ffmpeg_preset_rb3, "Faster encoding speed, lower quality (but not so much IMHO). Maps to the same ffmpeg option")
-        ffmpeg_preset.set('medium')
+                                        variable=self.ffmpeg_preset, value='veryfast', font=("Arial", self.font_size))
+        self.ffmpeg_preset_rb3.pack(side=TOP, anchor=W, padx=5)
+        self.ffmpeg_preset_rb3.config(state=DISABLED)
+        self.tootips.add(self.ffmpeg_preset_rb3, "Faster encoding speed, lower quality (but not so much IMHO). Maps to the same ffmpeg option")
+        self.ffmpeg_preset.set('medium')
         video_row += 1
 
         # Drop down to select resolution
         # datatype of menu text
-        resolution_dropdown_selected = StringVar()
+        self.resolution_dropdown_selected = StringVar()
 
         # initial menu text
-        resolution_dropdown_selected.set("1920x1440 (1080P)")
+        self.resolution_dropdown_selected.set("1920x1440 (1080P)")
 
         # Create resolution Dropdown menu
-        resolution_frame = Frame(video_frame)
-        resolution_frame.grid(row=video_row, column=0, columnspan= 2, sticky=W)
-        resolution_label = Label(resolution_frame, text='Resolution:', font=("Arial", self.font_size))
-        resolution_label.pack(side=LEFT, anchor=W, padx=5)
-        resolution_label.config(state=DISABLED)
-        resolution_dropdown = OptionMenu(resolution_frame,
-                                        resolution_dropdown_selected, *resolution_dict.keys(),
-                                        command=set_resolution)
-        resolution_dropdown.config(takefocus=1, font=("Arial", self.font_size))
-        resolution_dropdown.pack(side=LEFT, anchor=E, padx=5)
-        resolution_dropdown.config(state=DISABLED)
-        self.tootips.add(resolution_dropdown, "Resolution to be used when generating the video")
+        self.resolution_frame = Frame(self.video_frame)
+        self.resolution_frame.grid(row=video_row, column=0, columnspan= 2, sticky=W)
+        self.resolution_label = Label(self.resolution_frame, text='Resolution:', font=("Arial", self.font_size))
+        self.resolution_label.pack(side=LEFT, anchor=W, padx=5)
+        self.resolution_label.config(state=DISABLED)
+        resolution_dropdown = OptionMenu(self.resolution_frame,
+                                        self.resolution_dropdown_selected, *resolution_dict.keys(),
+                                        command=self.generic_widget_command)
+        self.resolution_dropdown.config(takefocus=1, font=("Arial", self.font_size))
+        self.resolution_dropdown.pack(side=LEFT, anchor=E, padx=5)
+        self.resolution_dropdown.config(state=DISABLED)
+        self.tootips.add(self.resolution_dropdown, "Resolution to be used when generating the video")
 
         # Create button to play the video
-        video_play_btn = Button(video_frame, text='▶', width=8,
+        self.video_play_btn = Button(self.video_frame, text='▶', width=8,
                                 height=1, command=play_video,
                                 activebackground='green',
                                 activeforeground='white', wraplength=80, font=("Arial", self.font_size))
-        video_play_btn.grid(row=video_row, column=2, sticky=E, padx=5)
-        self.tootips.add(video_play_btn, "Play the generated video")
+        self.video_play_btn.grid(row=video_row, column=2, sticky=E, padx=5)
+        self.tootips.add(self.video_play_btn, "Play the generated video")
 
         video_row += 1
 
+        self.postprocessing_bottom_frame = Frame(self.video_frame, width=30)
+        self.postprocessing_bottom_frame.grid(row=video_row, column=0)
+
+    def _init_expert_mode_section(self):
         # Extra (expert) area ***************************************************
-        if expert_mode:
-            extra_frame = LabelFrame(right_area_frame,
-                                    text='Expert options',
-                                    width=50, height=8, font=("Arial", self.font_size-2))
-            extra_frame.pack(padx=5, pady=5, ipadx=5, ipady=5, expand=True, fill="both")
-            extra_frame.grid_columnconfigure(0, weight=1)
-            extra_frame.grid_columnconfigure(1, weight=1)
-            extra_row = 0
+        self.extra_frame = LabelFrame(self.right_area_frame,
+                                text='Expert options',
+                                width=50, height=8, font=("Arial", self.font_size-2))
+        self.extra_frame.pack(padx=5, pady=5, ipadx=5, ipady=5, expand=True, fill="both")
+        self.extra_frame.grid_columnconfigure(0, weight=1)
+        self.extra_frame.grid_columnconfigure(1, weight=1)
+        extra_row = 0
 
-            # Check box to display misaligned frame monitor/editor
-            display_template_popup_btn = Button(extra_frame,
-                                                text='FrameSync Editor',
-                                                command=FrameSync_Viewer_popup,
-                                                width=15, font=("Arial", self.font_size))
-            display_template_popup_btn.config(relief=SUNKEN if frame_sync_viewer_opened else RAISED)
-            display_template_popup_btn.grid(row=extra_row, column=0, padx=5, sticky="nsew")
-            ### extra_frame.grid_columnconfigure(0, weight=1)
-            self.tootips.add(display_template_popup_btn, "Display popup window with dynamic debug information.Useful for developers only")
+        # Check box to display misaligned frame monitor/editor
+        # TODO: Copy and adapt legacy code for FrameSync_Viewer_popup
+        # TODO: Add in widget status update some code to raise or sunk the button, base on frame_sync_viewer_opened
+        self.display_template_popup_btn = Button(self.extra_frame,
+                                            text='FrameSync Editor',
+                                            command=FrameSync_Viewer_popup,
+                                            width=15, font=("Arial", self.font_size))
+        self.display_template_popup_btn.config(relief=RAISED)
+        self.display_template_popup_btn.grid(row=extra_row, column=0, padx=5, sticky="nsew")
+        ### extra_frame.grid_columnconfigure(0, weight=1)
+        self.tootips.add(self.display_template_popup_btn, "Display popup window with dynamic debug information.Useful for developers only")
 
-            # Settings button, at the bottom of top left area
-            options_btn = Button(extra_frame, text="Settings", command=cmd_settings_popup, width=15,
-                                relief=RAISED, font=("Arial", self.font_size), name='options_btn')
-            options_btn.widget_type = "general"
-            options_btn.grid(row=extra_row, column=1, padx=5, sticky="nsew")
-            self.tootips.add(options_btn, "Set AfterScan options.")
-            extra_row += 1
+        # Settings button, at the bottom of top left area
+        # TODO: Copy and adapt legacy code for cmd_settings_popup
+        # TODO: Actually nothing, settings dialog is modal
+        self.options_btn = Button(self.extra_frame, text="Settings", command=cmd_settings_popup, width=15,
+                            relief=RAISED, font=("Arial", self.font_size), name='options_btn')
+        self.options_btn.widget_type = "general"
+        self.options_btn.grid(row=extra_row, column=1, padx=5, sticky="nsew")
+        self.tootips.add(self.options_btn, "Set AfterScan options.")
+        extra_row += 1
 
-            # Spinbox to select stabilization threshold - Ignored, to be removed in the future
-            stabilization_threshold_label = tk.Label(extra_frame,
-                                                    text='Threshold:',
-                                                    width=11, font=("Arial", self.font_size))
-            #stabilization_threshold_label.grid(row=extra_row, column=1, columnspan=1, sticky=E)
-            stabilization_threshold_label.grid_forget()
-            stabilization_threshold_str = tk.StringVar(value=str(stabilization_threshold))
-            stabilization_threshold_selection_aux = extra_frame.register(
-                stabilization_threshold_selection)
-            stabilization_threshold_spinbox = tk.Spinbox(
-                extra_frame,
-                command=(stabilization_threshold_selection_aux, '%d'), width=6,
-                textvariable=stabilization_threshold_str, from_=0, to=255, font=("Arial", self.font_size))
-            #stabilization_threshold_spinbox.grid(row=extra_row, column=2, sticky=W)
-            stabilization_threshold_spinbox.grid_forget()
-            stabilization_threshold_spinbox.bind("<FocusOut>", stabilization_threshold_spinbox_focus_out)
-            self.tootips.add(stabilization_threshold_spinbox, "Threshold value to isolate the sprocket hole from the rest of the image while definint the custom template")
-
-            extra_row += 1
-
+    def _init_job_list_section(self):
         # Define job list area ***************************************************
         # Replace listbox with treeview
         # Define style for labelframe
-        style = ttk.Style()
-        style.configure("TLabelframe.Label", font=("Arial", self.font_size-2))
+        self.style = ttk.Style()
+        self.style.configure("TLabelframe.Label", font=("Arial", self.font_size-2))
         # Create a frame to hold Treeview and scrollbars
-        job_list_frame = ttk.LabelFrame(left_area_frame,
+        self.job_list_frame = ttk.LabelFrame(self.left_area_frame,
                                 text='Job List',
                                 width=50, height=8)
-        job_list_frame.pack(side=TOP, padx=2, pady=2, anchor=W)
+        self.job_list_frame.pack(side=TOP, padx=2, pady=2, anchor=W)
 
         # Create Treeview with a single column
-        job_list_treeview = ttk.Treeview(job_list_frame, columns=("description"))
+        self.job_list_treeview = ttk.Treeview(self.job_list_frame, columns=("description"))
 
         # Define style for headings
-        style.configure("Treeview.Heading", font=("Arial", self.font_size, "bold")) #Change header font.
+        self.style.configure("Treeview.Heading", font=("Arial", self.font_size, "bold")) #Change header font.
 
         # Define the single column
-        name_width = 130 if force_small_size else 200
-        description_width = 250 if force_small_size else 340
-        job_list_treeview.heading("#0", text="Name")
-        job_list_treeview.heading("description", text="Description")
-        job_list_treeview.column("#0", anchor="w", width=name_width, minwidth=name_width, stretch=tk.NO)
-        job_list_treeview.column("description", anchor="w", width=description_width, minwidth=1400, stretch=tk.NO)
+        name_width = 130 if self.store.get_state(FORCE_SMALL_SIZE) else 200
+        description_width = 250 if self.store.get_state(FORCE_SMALL_SIZE) else 340
+        self.job_list_treeview.heading("#0", text="Name")
+        self.job_list_treeview.heading("description", text="Description")
+        self.job_list_treeview.column("#0", anchor="w", width=name_width, minwidth=name_width, stretch=tk.NO)
+        self.job_list_treeview.column("description", anchor="w", width=description_width, minwidth=1400, stretch=tk.NO)
 
         # job listbox scrollbars
-        job_list_listbox_scrollbar_y = ttk.Scrollbar(job_list_frame, orient="vertical", command=job_list_treeview.yview)
-        job_list_treeview.configure(yscrollcommand=job_list_listbox_scrollbar_y.set)
-        job_list_listbox_scrollbar_y.grid(row=0, column=1, sticky=NS)
-        job_list_listbox_scrollbar_x = ttk.Scrollbar(job_list_frame, orient="horizontal", command=job_list_treeview.xview)
-        job_list_treeview.configure(xscrollcommand=job_list_listbox_scrollbar_x.set)
-        job_list_listbox_scrollbar_x.grid(row=1, column=0, columnspan=1, sticky=EW)
+        self.job_list_listbox_scrollbar_y = ttk.Scrollbar(self.job_list_frame, orient="vertical", command=job_list_treeview.yview)
+        self.job_list_treeview.configure(yscrollcommand=self.job_list_listbox_scrollbar_y.set)
+        self.job_list_listbox_scrollbar_y.grid(row=0, column=1, sticky=NS)
+        self.job_list_listbox_scrollbar_x = ttk.Scrollbar(self.job_list_frame, orient="horizontal", command=job_list_treeview.xview)
+        self.job_list_treeview.configure(xscrollcommand=self.job_list_listbox_scrollbar_x.set)
+        self.job_list_listbox_scrollbar_x.grid(row=1, column=0, columnspan=1, sticky=EW)
 
         # Layout
-        job_list_treeview.grid(column=0, row=0, padx=5, pady=2, ipadx=5)
+        self.job_list_treeview.grid(column=0, row=0, padx=5, pady=2, ipadx=5)
 
         # Define tags for different row colors
-        job_list_treeview.tag_configure("pending", foreground="black")
-        job_list_treeview.tag_configure("ongoing", foreground="blue")
-        job_list_treeview.tag_configure("done", foreground="green")
-        job_list_treeview.tag_configure("joblist_font", font=("Arial", self.font_size))
+        self.job_list_treeview.tag_configure("pending", foreground="black")
+        self.job_list_treeview.tag_configure("ongoing", foreground="blue")
+        self.job_list_treeview.tag_configure("done", foreground="green")
+        self.job_list_treeview.tag_configure("joblist_font", font=("Arial", self.font_size))
 
+        # TODO: Continue here: Need to see where to add a bunch of treeview support functions, workign in parallel with the joblist class
         # Bind the keys to be used alog
-        job_list_treeview.bind("<Delete>", job_list_delete_current)
-        job_list_treeview.bind("<Return>", job_list_load_current)
-        job_list_treeview.bind("<KP_Enter>", job_list_load_current)
-        job_list_treeview.bind("<Double - Button - 1>", job_list_load_current)
-        job_list_treeview.bind("r", job_list_rerun_current)
-        job_list_treeview.bind('<<ListboxSelect>>', job_list_process_selection)
-        job_list_treeview.bind("u", job_list_move_up)
-        job_list_treeview.bind("d", job_list_move_down)
+        self.job_list_treeview.bind("<Delete>", job_list_delete_current)
+        self.job_list_treeview.bind("<Return>", job_list_load_current)
+        self.job_list_treeview.bind("<KP_Enter>", job_list_load_current)
+        self.job_list_treeview.bind("<Double - Button - 1>", job_list_load_current)
+        self.job_list_treeview.bind("r", job_list_rerun_current)
+        self.job_list_treeview.bind('<<ListboxSelect>>', job_list_process_selection)
+        self.job_list_treeview.bind("u", job_list_move_up)
+        self.job_list_treeview.bind("d", job_list_move_down)
         job_list_listbox_disabled = False   # to prevent processing clicks on listbox, as disabling it will prevent checkign status of each job
         
         # Define job list button area
-        job_list_btn_frame = Frame(job_list_frame,
+        self.job_list_btn_frame = Frame(self.job_list_frame,
                                 width=50, height=8)
-        job_list_btn_frame.grid(row=0, column=2, padx=2, pady=2, sticky=W)
+        self.job_list_btn_frame.grid(row=0, column=2, padx=2, pady=2, sticky=W)
 
         # Add job button
-        add_job_btn = Button(job_list_btn_frame, text="Add job", width=12, height=1,
+        self.add_job_btn = Button(self.job_list_btn_frame, text="Add job", width=12, height=1,
                         command=job_list_add_current, activebackground='green',
                         activeforeground='white', wraplength=100, font=("Arial", self.font_size))
-        add_job_btn.pack(side=TOP, padx=2, pady=2)
-        self.tootips.add(add_job_btn, "Add to job list a new job using the current settings defined on the right area of the AfterScan window")
+        self.add_job_btn.pack(side=TOP, padx=2, pady=2)
+        self.tootips.add(self.add_job_btn, "Add to job list a new job using the current settings defined on the right area of the AfterScan window")
 
         # Delete job button
-        delete_job_btn = Button(job_list_btn_frame, text="Delete job", width=12, height=1,
+        self.delete_job_btn = Button(self.job_list_btn_frame, text="Delete job", width=12, height=1,
                         command=job_list_delete_selected, activebackground='green',
                         activeforeground='white', wraplength=100, font=("Arial", self.font_size))
-        delete_job_btn.pack(side=TOP, padx=2, pady=2)
-        self.tootips.add(delete_job_btn, "Delete currently selected job from list")
+        self.delete_job_btn.pack(side=TOP, padx=2, pady=2)
+        self.tootips.add(self.delete_job_btn, "Delete currently selected job from list")
 
         # Rerun job button
-        rerun_job_btn = Button(job_list_btn_frame, text="Rerun job", width=12, height=1,
+        self.rerun_job_btn = Button(self.job_list_btn_frame, text="Rerun job", width=12, height=1,
                         command=job_list_rerun_selected, activebackground='green',
                         activeforeground='white', wraplength=100, font=("Arial", self.font_size))
-        rerun_job_btn.pack(side=TOP, padx=2, pady=2)
-        self.tootips.add(rerun_job_btn, "Toggle 'run' state of currently selected job in list")
+        self.rerun_job_btn.pack(side=TOP, padx=2, pady=2)
+        self.tootips.add(self.rerun_job_btn, "Toggle 'run' state of currently selected job in list")
 
         # Start processing job button
-        start_batch_btn = Button(job_list_btn_frame, text="Start batch", width=12, height=1,
+        self.start_batch_btn = Button(self.job_list_btn_frame, text="Start batch", width=12, height=1,
                         command=start_processing_job_list, activebackground='green',
                         activeforeground='white', wraplength=100, font=("Arial", self.font_size))
-        start_batch_btn.pack(side=TOP, padx=2, pady=2)
-        self.tootips.add(start_batch_btn, "Start processing jobs in list")
+        self.start_batch_btn.pack(side=TOP, padx=2, pady=2)
+        self.tootips.add(self.start_batch_btn, "Start processing jobs in list")
 
         # Suspend on end checkbox
         # suspend_on_joblist_end = tk.BooleanVar(value=False)
@@ -1247,25 +1302,22 @@ class UIManager:
         #     width=13)
         # suspend_on_joblist_end_cb.pack(side=TOP, padx=2, pady=2)
 
-        suspend_on_completion_label = Label(job_list_btn_frame, text='Suspend on:', font=("Arial", self.font_size))
-        suspend_on_completion_label.pack(side=TOP, anchor=W, padx=2, pady=2)
-        suspend_on_completion = StringVar()
-        suspend_on_batch_completion_rb = Radiobutton(job_list_btn_frame, text="Job completion",
+        self.suspend_on_completion_label = Label(self.job_list_btn_frame, text='Suspend on:', font=("Arial", self.font_size))
+        self.suspend_on_completion_label.pack(side=TOP, anchor=W, padx=2, pady=2)
+        self.suspend_on_completion = StringVar()
+        self.suspend_on_batch_completion_rb = Radiobutton(self.job_list_btn_frame, text="Job completion",
                                     variable=suspend_on_completion, value='job_completion', font=("Arial", self.font_size))
-        suspend_on_batch_completion_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
-        self.tootips.add(suspend_on_batch_completion_rb, "Suspend computer when all jobs in list have been processed")
-        suspend_on_job_completion_rb = Radiobutton(job_list_btn_frame, text="Batch completion",
+        self.suspend_on_batch_completion_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
+        self.tootips.add(self.suspend_on_batch_completion_rb, "Suspend computer when all jobs in list have been processed")
+        self.suspend_on_job_completion_rb = Radiobutton(self.job_list_btn_frame, text="Batch completion",
                                     variable=suspend_on_completion, value='batch_completion', font=("Arial", self.font_size))
-        suspend_on_job_completion_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
-        self.tootips.add(suspend_on_batch_completion_rb, "Suspend computer when current job being processed is complete")
-        no_suspend_rb = Radiobutton(job_list_btn_frame, text="No suspend",
+        self.suspend_on_job_completion_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
+        self.tootips.add(self.suspend_on_batch_completion_rb, "Suspend computer when current job being processed is complete")
+        self.no_suspend_rb = Radiobutton(self.job_list_btn_frame, text="No suspend",
                                     variable=suspend_on_completion, value='no_suspend', font=("Arial", self.font_size))
-        no_suspend_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
-        self.tootips.add(suspend_on_batch_completion_rb, "Do not suspend when done")
+        self.no_suspend_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
+        self.tootips.add(self.suspend_on_batch_completion_rb, "Do not suspend when done")
 
-        suspend_on_completion.set("no_suspend")
-
-        postprocessing_bottom_frame = Frame(video_frame, width=30)
-        postprocessing_bottom_frame.grid(row=video_row, column=0)
+        self.suspend_on_completion.set("no_suspend")
 
 
