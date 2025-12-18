@@ -144,7 +144,8 @@ from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FIL
                        FORCE_4_3, FORCE_16_9, FRAME_FILL_TYPE, CROP_RECTANGLE, PERFORM_STABILIZATION, 
                        STABILIZATION_SHIFT_X, STABILIZATION_SHIFT_Y, PERFORM_ROTATION, VIDEO_FPS, 
                        VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
-                       PRECISE_TEMPLATE_MATCH)
+                       PRECISE_TEMPLATE_MATCH, FFMPEG_INSTALLED, IS_DEMO, USE_SIMPLE_STABILIZATION, 
+                       FORCE_SMALL_SIZE, NUM_THREADS, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS)
 
 
 
@@ -172,11 +173,20 @@ class AfterScanApp:
         """ Global variables as attribute classes."""
         # --- Shared state store ---
         self.store = store
-        self.event_bus = store.get_state(EVENT_BUS)
-        store.update_state(APP_VERSION, __version__)
+        self.event_bus = self.store.get_state(EVENT_BUS)
+        self.store.update_state(APP_VERSION, __version__)
         # --- Configuration ---
         self.config_manager = None
-        self.ignore_config = store.get_state(IGNORE_CONFIG)
+        self.store.update_state(IGNORE_CONFIG, self.cli_args.ignore_config)
+        self.store.update_state(IS_DEMO, self.cli_args.is_demo)
+        self.store.update_state(USE_SIMPLE_STABILIZATION, self.cli_args.use_simple_stabilization)
+        self.store.update_state(FORCE_SMALL_SIZE, self.cli_args.force_small_size)
+        self.store.update_state(NUM_THREADS, self.cli_args.num_threads)
+        self.store.update_state(BATCH_AUTOSTART, self.cli_args.batch_autostart)
+        self.store.update_state(GENERATE_CSV, self.cli_args.generate_csv)
+        self.store.update_state(DISABLE_TOOLTIPS, self.cli_args.disable_tooltips)
+        self.store.update_state(LOG_LEVEL, self.cli_args.log_level)
+
         # --- Templates ---
         self.template_manager = None
         # --- Batch job list ---
@@ -192,7 +202,6 @@ class AfterScanApp:
         self.merge_mertens = None
         self.align_mtb = None
         # --- Multithreading vars ---
-        self.num_threads = self.cli_args.num_threads
         self.frame_encoding_queue = None
         self.subprocess_event_queue = None
         # --- Video generation ---
@@ -286,15 +295,15 @@ class AfterScanApp:
 
         num_cores = os.cpu_count()
 
-        if self.num_threads == 0:
+        if self.store.get_state(NUM_THREADS) == 0:
             if num_cores is not None:
                 logging.debug(f"{num_cores} cores available")
-                self.num_threads = int(num_cores/2)
+                self.store.update_state(NUM_THREADS, int(num_cores/2))
             else:
                 logging.debug("Unable to determine number of cores available")
-                self.num_threads = 4
+                self.store.update_state(NUM_THREADS, 4)
 
-        logging.debug(f"Creating {self.num_threads} threads")
+        logging.debug(f"Creating {self.store.get_state(NUM_THREADS)} threads")
 
         self.frame_encoding_queue = queue.Queue(maxsize=20)
         self.subprocess_event_queue = queue.Queue(maxsize=20)
@@ -344,6 +353,7 @@ class AfterScanApp:
                 self.ffmpeg_bin_name = self.alt_ffmpeg_bin_name
                 if self.is_ffmpeg_installed():
                     self.ffmpeg_installed = True
+        self.store.update_state(FFMPEG_INSTALLED, self.ffmpeg_installed)
         if not self.ffmpeg_installed:
             tk.messagebox.showerror(
                 "Error: ffmpeg is not installed",
@@ -355,7 +365,7 @@ class AfterScanApp:
     def _exit_app(self):  # Exit Application
         # Terminate threads
         # frame_encoding_event.set()
-        for i in range(0, self.num_threads):
+        for i in range(0, self.store.get_state(NUM_THREADS)):
             self.frame_encoding_queue.put((END_TOKEN, 0))
             logging.debug("Inserting end token to encoding queue")
 
@@ -467,7 +477,7 @@ class AfterScanApp:
 
             if not generate_video.get() or not skip_frame_regeneration.get():
                 # Check if CSV option selected
-                if generate_csv:
+                if self.store.get_state(GENERATE_CSV):
                     csv_filename = video_filename_str.get()
                     name, ext = os.path.splitext(csv_filename)
                     if name == "":  # Assign default if no filename
@@ -512,7 +522,11 @@ class AfterScanApp:
         os.chdir(self.script_dir) 
         self.store.update_state(SCRIPT_DIR, self.script_dir)
 
-        log_level = getattr(logging, self.config.log_level.upper(), None)
+        if self.store.log_level != None:
+            effective_log_level = self.store.log_level    # Command line value overrides value in comfiguration
+        else:
+            effective_log_level = self.config.log_level
+        log_level = getattr(logging, effective_log_level.upper(), None)
         if not isinstance(log_level, int):
             raise ValueError('Invalid log level: %s' % log_level)
         else:
@@ -537,7 +551,7 @@ class AfterScanApp:
 
         self.initialize_basics()
 
-        if self.cli_args.go_disable_tooptips:
+        if self.store.get_state(DISABLE_TOOLTIPS):
             self.as_tooltips.disable()
 
         # Check reporting consent on first run
@@ -557,7 +571,7 @@ class AfterScanApp:
         load_project_config()
         decode_project_config()
 
-        if not ignore_config:
+        if not self.store.get_state(IGNORE_CONFIG):
             batch_job_list.load_from_file(None)
             refresh_job_tree()
 
@@ -588,7 +602,7 @@ class AfterScanApp:
         report_usage()
 
         # If batch_autostart, enable suspend on completion and start batch
-        if batch_autostart:
+        if self.store.get_state(BATCH_AUTOSTART):
             suspend_on_joblist_end.set(True)
             win.after(2000, start_processing_job_list) # Wait 2 sec. to allow main loop to start
 
@@ -628,7 +642,7 @@ def parse_args():
     parser.add_argument(
         '-n', '--no_tooltips',
         action='store_true',
-        dest='go_disable_tooptips',
+        dest='disable_tooltips',
         default=False,
         help='Disable tooltips.'
     )
@@ -683,11 +697,19 @@ def parse_args():
     )
     
     parser.add_argument(
-        '-d', '--dev_debug',
+        '-b', '--dev_debug',
         action='store_true',
         dest='dev_debug_enabled',
         default=False,
         help='Enable developer debug mode.'
+    )
+    
+    parser.add_argument(
+        '-d', '--demo',
+        action='store_true',
+        dest='is_demo',
+        default=False,
+        help='Enable demo mode (to record demo video).'
     )
     
     return parser.parse_args()

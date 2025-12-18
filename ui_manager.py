@@ -64,7 +64,8 @@ from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FIL
                        FORCE_4_3, FORCE_16_9, FRAME_FILL_TYPE, CROP_RECTANGLE, PERFORM_STABILIZATION, 
                        STABILIZATION_SHIFT_X, STABILIZATION_SHIFT_Y, PERFORM_ROTATION, VIDEO_FPS, 
                        VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
-                       PRECISE_TEMPLATE_MATCH)
+                       PRECISE_TEMPLATE_MATCH, FFMPEG_INSTALLED, FFMPEG_INSTALLED, IS_DEMO, USE_SIMPLE_STABILIZATION,
+                       FORCE_SMALL_SIZE, NUM_THREADS, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS)
 
 
 
@@ -211,6 +212,95 @@ class UIManager:
             return
 
         self.config_manager.save_configuration()
+
+    def widget_status_update(self, widget_state=0, button_action=0):
+        if widget_state != 0:
+            crop_area_defined = self.store.get_state(CROP_RECTANGLE)[0] != (0, 0) and self.store.get_state(CROP_RECTANGLE)[1] != (0, 0)
+            self.frame_slider.config(state=widget_state)
+            self.Go_btn.config(state=widget_state if button_action != self.Go_btn else NORMAL)
+            self.Exit_btn.config(state=widget_state)
+            self.frames_source_dir.config(state=widget_state)
+            self.source_folder_btn.config(state=widget_state)
+            self.frames_target_dir.config(state=widget_state)
+            self.target_folder_btn.config(state=widget_state)
+            self.encode_all_frames_checkbox.config(state=widget_state)
+            self.frame_from_entry.config(state=widget_state if not self.encode_all_frames.get() else DISABLED)
+            self.frame_to_entry.config(state=widget_state if not self.encode_all_frames.get() else DISABLED)
+            self.frames_to_encode_label.config(state=widget_state if not self.encode_all_frames.get() else DISABLED)
+            self.frames_separator_label.config(state=widget_state if not self.encode_all_frames.get() else DISABLED)
+            self.perform_rotation_checkbox.config(state=widget_state)
+            self.rotation_angle_spinbox.config(state=widget_state if self.perform_rotation.get() else DISABLED)
+            self.rotation_angle_label.config(state=widget_state if self.perform_rotation.get() else DISABLED)
+            self.perform_stabilization_checkbox.config(state=widget_state if not is_demo else NORMAL)
+            self.perform_fill_none_rb.config(state=widget_state if not is_demo else NORMAL)
+            self.perform_fill_fake_rb.config(state=widget_state if not is_demo else NORMAL)
+            self.perform_fill_dumb_rb.config(state=widget_state if not is_demo else NORMAL)
+            self.extended_stabilization_checkbox.config(state=widget_state if perform_stabilization.get() else DISABLED)
+            self.custom_stabilization_btn.config(state=widget_state)
+            self.stabilization_threshold_match_label.config(state=widget_state if perform_stabilization.get() else DISABLED)
+            self.stabilization_shift_label.config(state=widget_state if perform_stabilization.get() else DISABLED)
+            self.stabilization_shift_y_spinbox.config(state=widget_state if perform_stabilization.get() else DISABLED)
+            self.stabilization_shift_x_spinbox.config(state=widget_state if perform_stabilization.get() else DISABLED)
+            self.low_contrast_custom_template_checkbox.config(state=widget_state)
+            self.stabilization_threshold_spinbox.config(state=widget_state)
+
+            if is_demo:
+                self.perform_cropping_checkbox.config(state=NORMAL)
+            else:
+                self.perform_cropping_checkbox.config(state=widget_state if self.perform_stabilization.get() and crop_area_defined else DISABLED)
+            self.cropping_btn.config(state=widget_state if self.perform_stabilization.get() else DISABLED)
+            self.force_4_3_crop_checkbox.config(state=widget_state if self.perform_stabilization.get() else DISABLED)
+            self.force_16_9_crop_checkbox.config(state=widget_state if self.perform_stabilization.get() else DISABLED)
+            self.perform_denoise_checkbox.config(state=widget_state)
+            self.perform_sharpness_checkbox.config(state=widget_state)
+            self.perform_gamma_correction_checkbox.config(state=widget_state)
+            self.gamma_correction_spinbox.config(state=widget_state)
+            self.film_type_S8_rb.config(state=DISABLED if template_manager.get_active_type() == 'custom' else widget_state)
+            self.film_type_R8_rb.config(state=DISABLED if template_manager.get_active_type() == 'custom' else widget_state)
+            self.generate_video_checkbox.config(state=widget_state if self.store.get_state(FFMPEG_INSTALLED) else DISABLED)
+
+            self.skip_frame_regeneration_cb.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.video_target_dir_entry.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.video_target_folder_btn.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.video_filename_label.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.video_title_label.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.video_title_name.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.video_fps_dropdown.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.resolution_dropdown.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.video_fps_label.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.resolution_label.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.video_filename_name.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.ffmpeg_preset_rb1.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.ffmpeg_preset_rb2.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.ffmpeg_preset_rb3.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.video_play_btn.config(state=widget_state if self.config_manager.get_generate_video() else DISABLED)
+            self.start_batch_btn.config(state=widget_state if button_action != self.start_batch_btn else NORMAL)
+            self.add_job_btn.config(state=widget_state)
+            self.delete_job_btn.config(state=widget_state)
+            self.rerun_job_btn.config(state=widget_state)
+            #job_list_treeview.config(state=widget_state)
+            if widget_state == DISABLED:
+                job_list_listbox_disabled = True
+            else:
+                job_list_listbox_disabled = False
+        # Handle a few specific widgets having extra conditions
+        if len(source_dir_file_list) == 0:
+            self.perform_stabilization_checkbox.config(state=DISABLED)
+            self.perform_cropping_checkbox.config(state=DISABLED)
+            self.cropping_btn.config(state=DISABLED)
+            self.force_4_3_crop_checkbox.config(state=DISABLED)
+            self.force_16_9_crop_checkbox.config(state=DISABLED)
+            self.perform_denoise_checkbox.config(state=DISABLED)
+            self.perform_sharpness_checkbox.config(state=DISABLED)
+            self.perform_gamma_correction_checkbox.config(state=DISABLED)
+            self.gamma_correction_spinbox.config(state=DISABLED)
+        self.custom_stabilization_btn.config(relief=SUNKEN if template_manager.get_active_type() == 'custom' else RAISED)
+
+        if self.store.get_state(USE_SIMPLE_STABILIZATION):
+            self.custom_stabilization_btn.config(state = DISABLED)
+            self.low_contrast_custom_template_checkbox.config(state = DISABLED)
+            self.stabilization_threshold_match_label.config(state = DISABLED)
+            self.extended_stabilization_checkbox.config(state = DISABLED)
 
 
     # Validation function for different widgets
@@ -1306,15 +1396,15 @@ class UIManager:
         self.suspend_on_completion_label.pack(side=TOP, anchor=W, padx=2, pady=2)
         self.suspend_on_completion = StringVar()
         self.suspend_on_batch_completion_rb = Radiobutton(self.job_list_btn_frame, text="Job completion",
-                                    variable=suspend_on_completion, value='job_completion', font=("Arial", self.font_size))
+                                    variable=self.suspend_on_completion, value='job_completion', font=("Arial", self.font_size))
         self.suspend_on_batch_completion_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
         self.tootips.add(self.suspend_on_batch_completion_rb, "Suspend computer when all jobs in list have been processed")
         self.suspend_on_job_completion_rb = Radiobutton(self.job_list_btn_frame, text="Batch completion",
-                                    variable=suspend_on_completion, value='batch_completion', font=("Arial", self.font_size))
+                                    variable=self.suspend_on_completion, value='batch_completion', font=("Arial", self.font_size))
         self.suspend_on_job_completion_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
         self.tootips.add(self.suspend_on_batch_completion_rb, "Suspend computer when current job being processed is complete")
         self.no_suspend_rb = Radiobutton(self.job_list_btn_frame, text="No suspend",
-                                    variable=suspend_on_completion, value='no_suspend', font=("Arial", self.font_size))
+                                    variable=self.suspend_on_completion, value='no_suspend', font=("Arial", self.font_size))
         self.no_suspend_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
         self.tootips.add(self.suspend_on_batch_completion_rb, "Do not suspend when done")
 

@@ -106,4 +106,13 @@ VIDEO_RESOLUTION = "video_resolution"
 CURRENT_BAD_FRAME_INDEX = "current_bad_frame_index"
 USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION = "user_defined_left_stripe_width_proportion"
 PRECISE_TEMPLATE_MATCH = "precise_template_match"
+FFMPEG_INSTALLED = "ffmpeg_installed"
+IS_DEMO = "is_demo"
+USE_SIMPLE_STABILIZATION = "use_simple_stabilization"
+FORCE_SMALL_SIZE = "force_small_size"
+NUM_THREADS = "num_threads"
+BATCH_AUTOSTART = "batch_autostart"
+GENERATE_CSV = "generate_csv"
+
+
 
