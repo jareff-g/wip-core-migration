@@ -52,7 +52,7 @@ from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, 
 # Shared Store constants
 # Shared Store constants
 from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
-                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGTH, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
+                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
                        UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
                        PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
                        ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
@@ -65,7 +65,9 @@ from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FIL
                        STABILIZATION_SHIFT_X, STABILIZATION_SHIFT_Y, PERFORM_ROTATION, VIDEO_FPS, 
                        VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
                        PRECISE_TEMPLATE_MATCH, FFMPEG_INSTALLED, FFMPEG_INSTALLED, IS_DEMO, USE_SIMPLE_STABILIZATION,
-                       FORCE_SMALL_SIZE, NUM_THREADS, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS)
+                       FORCE_SMALL_SIZE, NUM_THREADS, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS, LOG_LEVEL,
+                       CONVERT_LOOP_RUNNING, CONVERT_LOOP_EXIT_REQUESTED, FIRST_ABSOLUTE_FRAME, FRAME_SCALE_REFRESH_DONE, 
+                       FRAME_SCALE_REFRESH_PENDING)
 
 
 
@@ -90,6 +92,16 @@ class UIManager:
         self.big_size = self.store.get_state(BIG_SIZE)
         self.script_dir = self.store.get_state(SCRIPT_DIR)
         self.ignore_config = self.store.get_state(IGNORE_CONFIG)
+
+        self._init_ui_menu()
+        self._init_canvas_section()
+        self._init_top_right_section()
+        self._init_folder_selection_section()
+        self._init_post_processing_section()
+        self._init_video_generation_section()
+        self._init_expert_mode_section()
+        self._init_job_list_section()
+
 
 
         # Placeholder for UI components initialization
@@ -231,20 +243,20 @@ class UIManager:
             self.perform_rotation_checkbox.config(state=widget_state)
             self.rotation_angle_spinbox.config(state=widget_state if self.perform_rotation.get() else DISABLED)
             self.rotation_angle_label.config(state=widget_state if self.perform_rotation.get() else DISABLED)
-            self.perform_stabilization_checkbox.config(state=widget_state if not is_demo else NORMAL)
-            self.perform_fill_none_rb.config(state=widget_state if not is_demo else NORMAL)
-            self.perform_fill_fake_rb.config(state=widget_state if not is_demo else NORMAL)
-            self.perform_fill_dumb_rb.config(state=widget_state if not is_demo else NORMAL)
-            self.extended_stabilization_checkbox.config(state=widget_state if perform_stabilization.get() else DISABLED)
+            self.perform_stabilization_checkbox.config(state=widget_state if not self.store.get_state(IS_DEMO) else NORMAL)
+            self.perform_fill_none_rb.config(state=widget_state if not self.store.get_state(IS_DEMO) else NORMAL)
+            self.perform_fill_fake_rb.config(state=widget_state if not self.store.get_state(IS_DEMO) else NORMAL)
+            self.perform_fill_dumb_rb.config(state=widget_state if not self.store.get_state(IS_DEMO) else NORMAL)
+            self.extended_stabilization_checkbox.config(state=widget_state if self.perform_stabilization.get() else DISABLED)
             self.custom_stabilization_btn.config(state=widget_state)
-            self.stabilization_threshold_match_label.config(state=widget_state if perform_stabilization.get() else DISABLED)
-            self.stabilization_shift_label.config(state=widget_state if perform_stabilization.get() else DISABLED)
-            self.stabilization_shift_y_spinbox.config(state=widget_state if perform_stabilization.get() else DISABLED)
-            self.stabilization_shift_x_spinbox.config(state=widget_state if perform_stabilization.get() else DISABLED)
+            self.stabilization_threshold_match_label.config(state=widget_state if self.perform_stabilization.get() else DISABLED)
+            self.stabilization_shift_label.config(state=widget_state if self.perform_stabilization.get() else DISABLED)
+            self.stabilization_shift_y_spinbox.config(state=widget_state if self.perform_stabilization.get() else DISABLED)
+            self.stabilization_shift_x_spinbox.config(state=widget_state if self.perform_stabilization.get() else DISABLED)
             self.low_contrast_custom_template_checkbox.config(state=widget_state)
             self.stabilization_threshold_spinbox.config(state=widget_state)
 
-            if is_demo:
+            if self.store.get_state(IS_DEMO):
                 self.perform_cropping_checkbox.config(state=NORMAL)
             else:
                 self.perform_cropping_checkbox.config(state=widget_state if self.perform_stabilization.get() and crop_area_defined else DISABLED)
@@ -494,7 +506,6 @@ class UIManager:
             self.config_manager.set_job_list_filename(job_list_filename)
             self.display_window_title()
 
-
     def load_named_job_list(self):
         global job_list, job_list_filename, job_list_hash
 
@@ -588,6 +599,30 @@ class UIManager:
 
         self.config_manager.set_video_target_dir(self.video_target_dir_str.get())
 
+    def select_scale_frame(self, selected_frame):
+        if int(selected_frame) >= len(source_dir_file_list):
+            selected_frame = str(len(source_dir_file_list) - 1)
+        if not self.store.get_state(CONVERT_LOOP_RUNNING) and not self.store.get_state(BATCH_JOB_RUNNING): # Do not refresh during conversion loop
+            self.frame_slider.focus()
+            current_frame = int(selected_frame)
+            self.config_manager.set_current_frame(current_frame)
+            refresh_current_frame_ui_info(current_frame, self.store.get_state(FIRST_ABSOLUTE_FRAME))
+            if self.store.get_state(FRAME_SCALE_REFRESH_DONE):
+                self.store.update_state(FRAME_SCALE_REFRESH_DONE, False)
+                self.store.update_state(FRAME_SCALE_REFRESH_PENDING, False)
+                if self.store.get_state(UI_INIT_DONE):
+                    self.win.after(5, scale_display_update, False)
+            else:
+                self.store.update_state(FRAME_SCALE_REFRESH_PENDING, True)
+
+    def process_scale_value(self, event):
+        """
+        This function is called ONLY when the left mouse button (Button 1)
+        is released on the Scale widget.
+        """
+        # Get the current value from the scale widget
+        select_scale_frame(frame_slider.get())
+
     def play_video(self):
         target_video_filename = self.video_filename_str.get()
         if not self.launch_video(os.path.join(self.video_target_dir_str.get(), target_video_filename)):
@@ -596,7 +631,6 @@ class UIManager:
                 "An error occurred while trying to launch the video.\r\n"
                 "Please check that a default video player is correctly installed "
                 "in your system.")
-
 
     def launch_video(self, video_file_path):
         """
@@ -681,7 +715,7 @@ class UIManager:
         self.border_frame.pack(expand=True, fill="both", padx=5, pady=5)
         # Retrieve canvas dimensions
         preview_width = self.store.get_state(PREVIEW_WIDTH)
-        preview_height = self.store.get_state(PREVIEW_HEIGTH)
+        preview_height = self.store.get_state(PREVIEW_HEIGHT)
         # Create the canvas
         self.draw_capture_canvas = Canvas(self.border_frame, bg='dark grey', width=preview_width, height=preview_height)
         self.draw_capture_canvas.pack(side=TOP, anchor=N)

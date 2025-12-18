@@ -29,7 +29,7 @@ from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, 
                        JOB_LIST_DESCRIPTION_LENGTH)
 # Shared Store constants
 from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
-                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGTH, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
+                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
                        UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
                        PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
                        ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
@@ -42,7 +42,10 @@ from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FIL
                        STABILIZATION_SHIFT_X, STABILIZATION_SHIFT_Y, PERFORM_ROTATION, VIDEO_FPS, 
                        VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
                        PRECISE_TEMPLATE_MATCH, FFMPEG_INSTALLED, IS_DEMO, USE_SIMPLE_STABILIZATION, 
-                       FORCE_SMALL_SIZE, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS, LOG_LEVEL)
+                       FORCE_SMALL_SIZE, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS, LOG_LEVEL, 
+                       NUM_THREADS, TEMPORAL_DENOISE_SUPPORTED, UI_MANAGER, CONVERT_LOOP_RUNNING, 
+                       CONVERT_LOOP_EXIT_REQUESTED, FIRST_ABSOLUTE_FRAME, FRAME_SCALE_REFRESH_DONE, 
+                       FRAME_SCALE_REFRESH_PENDING)
 
 
 # --- 1. The Centralized State Store (Data Access) ---
@@ -71,7 +74,7 @@ class AppStateStore:
             APP_VERSION: "",
             BATCH_JOB_LIST: None,
             PREVIEW_WIDTH: 0,
-            PREVIEW_HEIGTH: 0,
+            PREVIEW_HEIGHT: 0,
             BIG_SIZE: True,
             SCRIPT_DIR: "",
             UI_INIT_DONE: False,
@@ -126,7 +129,15 @@ class AppStateStore:
             BATCH_AUTOSTART: False,
             GENERATE_CSV: False,
             DISABLE_TOOLTIPS: False,
-            LOG_LEVEL: None
+            LOG_LEVEL: None, 
+            NUM_THREADS: 4,
+            TEMPORAL_DENOISE_SUPPORTED: False,
+            UI_MANAGER: None,
+            CONVERT_LOOP_RUNNING: False,
+            CONVERT_LOOP_EXIT_REQUESTED: False,
+            FIRST_ABSOLUTE_FRAME: 0,
+            FRAME_SCALE_REFRESH_DONE: True,
+            FRAME_SCALE_REFRESH_PENDING: False
         }
 
     def get_state(self, key: str):

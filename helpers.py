@@ -26,6 +26,9 @@ import logging
 import json
 from datetime import datetime
 from dataclasses import asdict
+from typing import Dict, Any, List, Callable, Tuple
+
+
 from job_manager import JobEntry
 from configuration_manager import ProjectConfigEntry
 
@@ -173,3 +176,13 @@ def generate_dict_hash(dictionary: Dict[str, Any]) -> str:
     
     # 2. Generate and return the hash
     return hashlib.sha256(serialized_dict).hexdigest()
+
+
+def normalize_job_name(name):
+    return name[:JOB_LIST_NAME_LENGTH].strip()
+
+def on_paste_all_entries(event, entry):
+    try:
+        entry.delete(tk.SEL_FIRST, tk.SEL_LAST)
+    except tk.TclError:
+        logging.warning("No selection to delete")

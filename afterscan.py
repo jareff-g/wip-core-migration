@@ -40,6 +40,8 @@ import platform
 import time
 from datetime import datetime
 import threading
+import cv2
+import subprocess as sp
 
 # Due to how python works, logging code needs to be initialized here, so that AfterScan classes all use the same logger
 # Global logger instance (used for the root logger)
@@ -132,7 +134,7 @@ from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, 
 # Shared Store constants
 # Shared Store constants
 from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
-                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGTH, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
+                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
                        UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
                        PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
                        ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
@@ -145,7 +147,8 @@ from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FIL
                        STABILIZATION_SHIFT_X, STABILIZATION_SHIFT_Y, PERFORM_ROTATION, VIDEO_FPS, 
                        VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
                        PRECISE_TEMPLATE_MATCH, FFMPEG_INSTALLED, IS_DEMO, USE_SIMPLE_STABILIZATION, 
-                       FORCE_SMALL_SIZE, NUM_THREADS, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS)
+                       FORCE_SMALL_SIZE, NUM_THREADS, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS,
+                       LOG_LEVEL, TEMPORAL_DENOISE_SUPPORTED, UI_MANAGER)
 
 
 
@@ -177,6 +180,7 @@ class AfterScanApp:
         self.store.update_state(APP_VERSION, __version__)
         # --- Configuration ---
         self.config_manager = None
+        # --- Add command line parameter options to shared store ---
         self.store.update_state(IGNORE_CONFIG, self.cli_args.ignore_config)
         self.store.update_state(IS_DEMO, self.cli_args.is_demo)
         self.store.update_state(USE_SIMPLE_STABILIZATION, self.cli_args.use_simple_stabilization)
@@ -215,8 +219,8 @@ class AfterScanApp:
         self.is_mac = False
 
         # Subscribe to actions originating from the UI
-        self.bus.subscribe(EXIT_APP, self._exit_app)
-        self.bus.subscribe(START_CONVERT, self._start_convert)
+        self.event_bus.subscribe(EXIT_APP, self._exit_app)
+        self.event_bus.subscribe(START_CONVERT, self._start_convert)
 
     def initialize_basics(self):
         self.win = tk.Tk()  # Create main window, store it in 'win'
@@ -226,27 +230,27 @@ class AfterScanApp:
         _, screen_height = self.win.maxsize()
         # Set dimensions of UI elements adapted to screen size
         if (screen_height >= 1000 and not self.cli_args.force_small_size):
-            self.big_size = True
-            self.font_size = 11
-            self.preview_width = 700
-            self.preview_height = 525
+            big_size = True
+            font_size = 11
+            preview_width = 700
+            preview_height = 525
         else:
-            self.big_size = False
-            self.font_size = 8
-            self.preview_width = 500
-            self.preview_height = 375
+            big_size = False
+            font_size = 8
+            preview_width = 500
+            preview_height = 375
 
-        self.store.update_state(FONT_SIZE, self.font_size)    # Update shared store
-        self.store.update_state(PREVIEW_WIDTH, self.preview_width)    # Update shared store
-        self.store.update_state(PREVIEW_HEIGTH, self.preview_height)    # Update shared store
-        self.store.update_state(BIG_SIZE, self.big_size)    # Update shared store
+        self.store.update_state(FONT_SIZE, font_size)    # Update shared store
+        self.store.update_state(PREVIEW_WIDTH, preview_width)    # Update shared store
+        self.store.update_state(PREVIEW_HEIGHT, preview_height)    # Update shared store
+        self.store.update_state(BIG_SIZE, big_size)    # Update shared store
 
         """ delete_this
         self.display_window_title()  # setting title of the window
         """
         
         if self.config_manager.get_window_pos() != '':
-            win.geometry(f"+{self.config_manager.get_window_pos().split('+', 1)[1]}")
+            self.win.geometry(f"+{self.config_manager.get_window_pos().split('+', 1)[1]}")
 
         self.win.update_idletasks()
 
@@ -266,16 +270,19 @@ class AfterScanApp:
         self.move_y_average = RollingAverage(50)
 
         # Get Top window coordinates
-        self.top_win_x = win.winfo_x()
-        self.top_win_y = win.winfo_y()
+        self.top_win_x = self.win.winfo_x()
+        self.top_win_y = self.win.winfo_y()
 
         # Create merge_mertens Object for HDR
         self.merge_mertens = cv2.createMergeMertens()
         # Create Align MTB object for HDR
         self.align_mtb = cv2.createAlignMTB()
 
-        if not HAS_TEMPORAL_DENOISE:
+        # Check for temporalDenoise supported by OpenCV 
+        temporal_denoise_supported = hasattr(cv2, 'temporalDenoising')
+        if not temporal_denoise_supported:
             logging.info(f"Temporal denoise not available. OpenCV version is {cv2.__version__}")
+        self.store.update_state(TEMPORAL_DENOISE_SUPPORTED, temporal_denoise_supported)
 
         logging.debug("AfterScan initialized")
 
@@ -413,8 +420,8 @@ class AfterScanApp:
             # Enforce minimum value for Gamma in case user clicks starts rigth after having manually entered a zero in GC box
             gamma_enforce_min_value()
             # Save current project status
-            config_manager.save_configuration()
-            batch_job_list.save_to_file(job_list_filename)
+            self.config_manager.save_configuration()
+            self.batch_job_list.save_to_file(job_list_filename)
             # Empty FPS register list
             fps_tracker.reset()
             # Centralize 'frames_to_encode' update here
@@ -451,10 +458,10 @@ class AfterScanApp:
                 # Disable all buttons in main window
                 widget_status_update(DISABLED, Go_btn)
             FrameSync_Viewer_popup_update_widgets(DISABLED)
-            win.update()
+            self.win.update()
 
-            config_manager.set_film_type(film_type.get())
-            if config_manager.get_generate_video():
+            self.config_manager.set_film_type(film_type.get())
+            if self.config_manager.get_generate_video():
                 target_video_filename = video_filename_str.get()
                 name, ext = os.path.splitext(target_video_filename)
                 if target_video_filename == "":   # Assign default if no filename
@@ -498,10 +505,10 @@ class AfterScanApp:
                 FrameSync_Viewer_popup_update_widgets(DISABLED)
                 # Multiprocessing: Start all threads before encoding
                 start_threads()
-                win.after(1, frame_generation_loop)
+                self.win.after(1, frame_generation_loop)
             elif generate_video.get():
                 # first check if resolution has been set
-                if resolution_dict[config_manager.get_video_resolution()] == '':
+                if resolution_dict[self.config_manager.get_video_resolution()] == '':
                     if not batch_job_running:
                         logging.error("Error, no video resolution selected")
                         tk.messagebox.showerror("Error!", "Please specify video resolution.")
@@ -511,21 +518,22 @@ class AfterScanApp:
                 else:
                     ffmpeg_success = False
                     ffmpeg_encoding_status = ffmpeg_state.Pending
-                    win.after(1000, video_generation_loop)
+                    self.win.after(1000, video_generation_loop)
 
 
     def run(self):
-        print(self.config)
+        print(self.config_manager)
 
         """Set CWD to folder when scrit is running."""
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         os.chdir(self.script_dir) 
         self.store.update_state(SCRIPT_DIR, self.script_dir)
 
-        if self.store.log_level != None:
-            effective_log_level = self.store.log_level    # Command line value overrides value in comfiguration
+        if self.store.get_state(LOG_LEVEL) != None:
+            effective_log_level = self.store.get_state(LOG_LEVEL)    # Command line value
         else:
-            effective_log_level = self.config.log_level
+            effective_log_level = "ERROR"   # Default to Error
+
         log_level = getattr(logging, effective_log_level.upper(), None)
         if not isinstance(log_level, int):
             raise ValueError('Invalid log level: %s' % log_level)
@@ -534,9 +542,12 @@ class AfterScanApp:
 
         """Create and initialize TemplateManager: Add default templates to template list."""
         self.template_manager = TemplateManager.initialize(self.script_dir)
+        print(f"Templates initialized")
         """Create and initialize ConfigurationManager."""
         self.config_manager = ConfigurationManager.initialize(self.script_dir)
+        print(f"Configuration initialized")
         self.store.update_state(CONFIG_MANAGER, self.config_manager)
+        print(f"Shared store initialized")
         if self.config_manager.load_configuration():
             self.config_manager.set_active_project(self.config_manager.get_source_dir())
         else:   # No configuration exist, assign hardcoded values to some critical attributes
@@ -545,11 +556,14 @@ class AfterScanApp:
             aux_project = self.config_manager.get_project_config("no project")
             self.config_manager.save_project_config(self.script_dir, aux_project)
             self.config_manager.set_active_project(self.script_dir)
+        print(f"Configuration loaded")
 
         self.batch_job_list = JobManager.initialize(self.script_dir)
+        print(f"Job list initialized")
         self.store.update_state(BATCH_JOB_LIST, self.batch_job_list)
 
         self.initialize_basics()
+        print(f"Basic stuff initialized")
 
         if self.store.get_state(DISABLE_TOOLTIPS):
             self.as_tooltips.disable()
@@ -564,8 +578,10 @@ class AfterScanApp:
         self.initialize_ffmpeg()
 
         # Create main UI
-        build_ui()
-        win.config(cursor="watch")  # Set cursor to hourglass
+        ui_manager = UIManager(None, None, self.store)
+        shared_store.update_state(UI_MANAGER, ui_manager)
+
+        self.win.config(cursor="watch")  # Set cursor to hourglass
         widget_status_update()
 
         load_project_config()
@@ -586,7 +602,7 @@ class AfterScanApp:
         self.store.update_state(UI_INIT_DONE, True)
 
         # Disable a few items that should be not operational without source folder
-        if len(config_manager.get_source_dir()) == 0:
+        if len(self.config_manager.get_source_dir()) == 0:
             Go_btn.config(state=DISABLED)
             cropping_btn.config(state=DISABLED)
             frame_slider.config(state=DISABLED)
@@ -597,19 +613,19 @@ class AfterScanApp:
 
         init_display()
 
-        win.resizable(False, False) # Lock window size once all widgets have been added (make sure all fits)
+        self.win.resizable(False, False) # Lock window size once all widgets have been added (make sure all fits)
 
         report_usage()
 
         # If batch_autostart, enable suspend on completion and start batch
         if self.store.get_state(BATCH_AUTOSTART):
             suspend_on_joblist_end.set(True)
-            win.after(2000, start_processing_job_list) # Wait 2 sec. to allow main loop to start
+            self.win.after(2000, start_processing_job_list) # Wait 2 sec. to allow main loop to start
 
-        win.config(cursor="")  # Set cursor to hourglass
+        self.win.config(cursor="")  # Set cursor to hourglass
 
         # Main Loop
-        win.mainloop()  # running the loop that works as a trigger
+        self.win.mainloop()  # running the loop that works as a trigger
 
 
 # --- 2. Command Line Interface (CLI) / Entry Point Logic ---
@@ -627,7 +643,7 @@ def parse_args():
         type=str,
         action='store',
         dest='log_level',
-        default='WARNING',
+        default=None,
         help='Sets log level to one of [DEBUG|INFO|WARNING|ERROR].'
     )
     
