@@ -126,6 +126,8 @@ from define_rectangle import DefineRectangle
 from helpers import RollingAverage, FPSTracker, CustomJsonEncoder, is_a_number, empty_queue
 from application_services import AppStateStore, EventBus
 from ui_manager import UIManager
+from refresh_store_from_config import refresh_store_from_config
+
 # Event bus constants
 from constants import (EXIT_APP, START_CONVERT)
 # Application constants
@@ -568,6 +570,8 @@ class AfterScanApp:
         if self.store.get_state(DISABLE_TOOLTIPS):
             self.as_tooltips.disable()
 
+        print(f"Tooltips disabled")
+
         # Check reporting consent on first run
         self.get_consent()
 
@@ -576,6 +580,7 @@ class AfterScanApp:
 
         # Try to detect if ffmpeg is installed
         self.initialize_ffmpeg()
+        print(f"ffmpeg initialized")
 
         # Create main UI
         ui_manager = UIManager(None, None, self.store)
@@ -585,7 +590,7 @@ class AfterScanApp:
         widget_status_update()
 
         load_project_config()
-        decode_project_config()
+        refresh_store_from_config(self.store, self.config_manager)
 
         if not self.store.get_state(IGNORE_CONFIG):
             batch_job_list.load_from_file(None)

@@ -44,6 +44,8 @@ from helpers import (RollingAverage, FPSTracker, CustomJsonEncoder, is_a_number,
                      empty_queue, generate_dict_hash, normalize_job_name, on_paste_all_entries)
 from configuration_manager import ConfigurationManager
 from application_services import AppStateStore, EventBus
+from refresh_store_from_config import refresh_store_from_config
+
 # Event bus constants
 from constants import (EXIT_APP, START_CONVERT)
 # Application constants
@@ -419,7 +421,7 @@ class UIManager:
             
         self.load_project_config()  # Needs source_dir defined
 
-        decode_project_config(self)  # Needs first_absolute_frame defined
+        refresh_store_from_config(self.store, self.config_manager)
 
         # If not defined in project, create target folder inside source folder
         if target_dir == '':
@@ -444,6 +446,26 @@ class UIManager:
         FrameSync_Viewer_popup_update_widgets(NORMAL)
         self.store.update_state(UI_INIT_DONE, True)
         self.win.config(cursor="")  # Reset cursor to standard arrow
+
+    def set_frames_target_folder(self):
+        aux_dir = filedialog.askdirectory(
+            initialdir=target_dir,
+            title="Select folder where to store generated frames")
+
+        if not aux_dir or aux_dir == "" or aux_dir == ():
+            return
+        elif aux_dir == self.store.get_state(SOURCE_DIR):
+            tk.messagebox.showerror(
+                "Error!",
+                "Target folder cannot be the same as source folder.")
+            return
+        else:
+            target_dir = aux_dir
+            get_target_dir_file_list()
+            frames_target_dir.delete(0, 'end')
+            frames_target_dir.insert('end', target_dir)
+            frames_target_dir.after(100, frames_target_dir.xview_moveto, 1)
+            config_manager.set_target_dir(target_dir)
 
     def load_project_config(self):
         if self.ignore_config:
@@ -729,11 +751,11 @@ class UIManager:
         self.frame_slider = Scale(self.border_frame, orient=HORIZONTAL, from_=0, to=0, showvalue=False,
                             variable=self.frame_selected, highlightthickness=1,
                             length=preview_width, takefocus=1, font=("Arial", self.font_size))
-        self.frame_slider.bind("<ButtonRelease-1>", process_scale_value)
-        self.frame_slider.bind("<KeyRelease>", process_scale_value)
+        self.frame_slider.bind("<ButtonRelease-1>", self.process_scale_value)
+        self.frame_slider.bind("<KeyRelease>", self.process_scale_value)
         self.frame_slider.pack(side=BOTTOM, pady=4)
         self.frame_slider.set(self.store.get_state(CURRENT_FRAME))
-        self.tootips.add(self.frame_slider, "Browse around frames to be processed")
+        self.tooltips.add(self.frame_slider, "Browse around frames to be processed")
 
     def _init_top_right_section(self):
         # Frame for standard widgets to the right of the preview
@@ -752,15 +774,15 @@ class UIManager:
 
         self.selected_frame_number = Label(self.frame_frame, width=12, text='Number:', font=("Arial", self.font_size))
         self.selected_frame_number.pack(side=TOP, pady=2)
-        self.tootips.add(self.selected_frame_number, "Frame number, as stated in the filename")
+        self.tooltips.add(self.selected_frame_number, "Frame number, as stated in the filename")
 
         self.selected_frame_index = Label(self.frame_frame, width=12, text='Index:', font=("Arial", self.font_size))
         self.selected_frame_index.pack(side=TOP, pady=2)
-        self.tootips.add(self.selected_frame_index, "Sequential frame index, from 1 to n")
+        self.tooltips.add(self.selected_frame_index, "Sequential frame index, from 1 to n")
 
         self.selected_frame_time = Label(self.frame_frame, width=12, text='Time:', font=("Arial", self.font_size))
         self.selected_frame_time.pack(side=TOP, pady=2)
-        self.tootips.add(self.selected_frame_time, "Time in the source film where this frame is located")
+        self.tooltips.add(self.selected_frame_time, "Time in the source film where this frame is located")
 
         # Application status label
         self.app_status_label = Label(self.regular_top_section_frame, width=46 if self.big_size else 46, borderwidth=2,
@@ -774,7 +796,7 @@ class UIManager:
                         activeforeground='white', wraplength=80, font=("Arial", self.font_size))
         self.Exit_btn.grid(row=0, column=1, rowspan=2, padx=10, sticky='nsew')
 
-        self.tootips.add(self.Exit_btn, "Exit AfterScan")
+        self.tooltips.add(self.Exit_btn, "Exit AfterScan")
 
         # Application start button
         self.Go_btn = Button(self.regular_top_section_frame, text="Start", width=12, height=5,
@@ -782,7 +804,7 @@ class UIManager:
                         activeforeground='white', wraplength=80, font=("Arial", self.font_size))
         self.Go_btn.grid(row=0, column=2, rowspan=2, sticky='nsew')
 
-        self.tootips.add(self.Go_btn, "Start post-processing using current settings")
+        self.tooltips.add(self.Go_btn, "Start post-processing using current settings")
 
         # Add AfterScan Logo
         self.win.update_idletasks()
@@ -829,7 +851,7 @@ class UIManager:
         self.frames_source_dir.after(100, self.frames_source_dir.xview_moveto, 1)
         self.frames_source_dir.bind('<<Paste>>', lambda event, entry=self.frames_source_dir: on_paste_all_entries(event, entry))
 
-        self.tootips.add(self.frames_source_dir, "Directory where the source frames are located")
+        self.tooltips.add(self.frames_source_dir, "Directory where the source frames are located")
 
         self.source_folder_btn = Button(self.source_folder_frame, text='Source', width=6,
                                 height=1, command=self.set_source_folder,
@@ -837,7 +859,7 @@ class UIManager:
                                 activeforeground='white', wraplength=80, font=("Arial", self.font_size))
         self.source_folder_btn.pack(side=LEFT)
 
-        self.self.tootips.add(self.source_folder_btn, "Selects the directory where the source frames are located")
+        self.tooltips.add(self.source_folder_btn, "Selects the directory where the source frames are located")
 
         self.target_folder_frame = Frame(self.folder_frame)
         self.target_folder_frame.pack(side=TOP)
@@ -846,15 +868,15 @@ class UIManager:
         self.frames_target_dir.pack(side=LEFT)
         self.frames_target_dir.bind('<<Paste>>', lambda event, entry=self.frames_target_dir: on_paste_all_entries(event, entry))
         
-        self.tootips.add(self.frames_target_dir, "Directory where generated frames will be stored")
+        self.tooltips.add(self.frames_target_dir, "Directory where generated frames will be stored")
 
         self.target_folder_btn = Button(self.target_folder_frame, text='Target', width=6,
-                                height=1, command=set_frames_target_folder,
+                                height=1, command=self.set_frames_target_folder,
                                 activebackground='green',
                                 activeforeground='white', wraplength=80, font=("Arial", self.font_size))
         self.target_folder_btn.pack(side=LEFT)
 
-        self.tootips.add(self.target_folder_btn, "Selects the directory where the generated frames will be stored")
+        self.tooltips.add(self.target_folder_btn, "Selects the directory where the generated frames will be stored")
 
         self.store.update_state(SAVE_BG, self.source_folder_btn['bg'])
         self.store.update_state(SAVE_FG, self.source_folder_btn['fg'])
@@ -878,11 +900,11 @@ class UIManager:
         self.film_type_S8_rb = Radiobutton(self.postprocessing_frame, text="Super 8", variable=self.film_type, command=set_film_type,
                                     width=11 if self.big_size else 11, value='S8', font=("Arial", self.font_size))
         self.film_type_S8_rb.grid(row=postprocessing_row, column=0, sticky=W)
-        self.tootips.add(self.film_type_S8_rb, "Handle as Super 8 film")
+        self.tooltips.add(self.film_type_S8_rb, "Handle as Super 8 film")
         self.film_type_R8_rb = Radiobutton(self.postprocessing_frame, text="Regular 8", variable=self.film_type, command=set_film_type,
                                     width=11 if self.big_size else 11, value='R8', font=("Arial", self.font_size))
         self.film_type_R8_rb.grid(row=postprocessing_row, column=1, sticky=W)
-        self.tootips.add(self.film_type_R8_rb, "Handle as 8mm (Regular 8) film")
+        self.tooltips.add(self.film_type_R8_rb, "Handle as 8mm (Regular 8) film")
         self.film_type.set('S8')
         postprocessing_row += 1
 
@@ -894,7 +916,7 @@ class UIManager:
             command=self.generic_widget_command, width=14, font=("Arial", self.font_size))
         self.encode_all_frames_checkbox.grid(row=postprocessing_row, column=0,
                                             columnspan=3, sticky=W)
-        self.tootips.add(self.encode_all_frames_checkbox, "If selected, all frames in source folder will be encoded")
+        self.tooltips.add(self.encode_all_frames_checkbox, "If selected, all frames in source folder will be encoded")
         postprocessing_row += 1
 
         # Entry to enter start/end frames
@@ -910,7 +932,7 @@ class UIManager:
         self.frame_from_entry.bind("<Button - 2>", self.update_frame_from)
         self.frame_from_entry.bind('<<Paste>>', lambda event, entry=self.frame_from_entry: on_paste_all_entries(event, entry))
         self.frame_from_entry.bind("<FocusOut>", self.update_frame_from)
-        self.tootips.add(self.frame_from_entry, "First frame to be processed, if not encoding the entire set")
+        self.tooltips.add(self.frame_from_entry, "First frame to be processed, if not encoding the entire set")
 
         self.frame_to_str = tk.StringVar(value=0)
         self.frames_separator_label = tk.Label(self.postprocessing_frame, text='to', width=2, font=("Arial", self.font_size))
@@ -922,7 +944,7 @@ class UIManager:
         self.frame_to_entry.bind("<Button - 2>", self.update_frame_to)
         self.frame_to_entry.bind('<<Paste>>', lambda event, entry=self.frame_to_entry: on_paste_all_entries(event, entry))
         self.frame_to_entry.bind("<FocusOut>", self.update_frame_to)
-        self.tootips.add(self.frame_to_entry, "Last frame to be processed, if not encoding the entire set")
+        self.tooltips.add(self.frame_to_entry, "Last frame to be processed, if not encoding the entire set")
 
         postprocessing_row += 1
 
@@ -935,7 +957,7 @@ class UIManager:
         self.perform_rotation_checkbox.grid(row=postprocessing_row, column=0,
                                             columnspan=1, sticky=W)
         self.perform_rotation_checkbox.config(state=NORMAL)
-        self.tootips.add(self.perform_rotation_checkbox, "Rotate generated frames")
+        self.tooltips.add(self.perform_rotation_checkbox, "Rotate generated frames")
 
         # Spinbox to select rotation angle
         self.rotation_angle_str = tk.StringVar(value=str(0))
@@ -946,7 +968,7 @@ class UIManager:
             format="%.1f", increment=0.1, font=("Arial", self.font_size))
         self.rotation_angle_spinbox.grid(row=postprocessing_row, column=1, sticky=W)
         self.rotation_angle_spinbox.bind("<FocusOut>", self.generic_widget_command)
-        self.tootips.add(self.rotation_angle_spinbox, "Angle to use when rotating frames")
+        self.tooltips.add(self.rotation_angle_spinbox, "Angle to use when rotating frames")
         #rotation_angle_selection('down')
         self.rotation_angle_label = tk.Label(self.postprocessing_frame,
                                         text='°',
@@ -966,7 +988,7 @@ class UIManager:
                                         activeforeground='white', font=("Arial", self.font_size))
         self.custom_stabilization_btn.config(relief=SUNKEN if template_manager.get_active_type() == 'Custom' else RAISED)
         self.custom_stabilization_btn.grid(row=postprocessing_row, column=0, columnspan=2, padx=5, pady=5, sticky=W)
-        self.tootips.add(self.custom_stabilization_btn,
+        self.tooltips.add(self.custom_stabilization_btn,
                     "Define a custom template for this project (vs the automatic template defined by AfterScan)")
 
         self.low_contrast_custom_template = tk.BooleanVar(value=False)
@@ -976,7 +998,7 @@ class UIManager:
             command=self.generic_widget_command, font=("Arial", self.font_size))
         self.low_contrast_custom_template_checkbox.grid(row=postprocessing_row, column=1,
                                             columnspan=2, sticky=E)
-        self.tootips.add(self.low_contrast_custom_template_checkbox, "Activate when defining a custom template using a low contrast frame")
+        self.tooltips.add(self.low_contrast_custom_template_checkbox, "Activate when defining a custom template using a low contrast frame")
 
         postprocessing_row += 1
 
@@ -988,11 +1010,11 @@ class UIManager:
             command=self.generic_widget_command, font=("Arial", self.font_size))
         self.perform_stabilization_checkbox.grid(row=postprocessing_row, column=0,
                                             columnspan=1, sticky=W)
-        self.tootips.add(self.perform_stabilization_checkbox, "Stabilize generated frames. Sprocket hole is used as common reference, it needs to be clearly visible")
+        self.tooltips.add(self.perform_stabilization_checkbox, "Stabilize generated frames. Sprocket hole is used as common reference, it needs to be clearly visible")
         # Label to display the match level of current frame to template
         self.stabilization_threshold_match_label = Label(self.postprocessing_frame, width=4, borderwidth=1, relief='sunken', font=("Arial", self.font_size))
         self.stabilization_threshold_match_label.grid(row=postprocessing_row, column=0, sticky=E)
-        self.tootips.add(self.stabilization_threshold_match_label, "Dynamically displays the match quality of the sprocket hole template. Green is good, orange acceptable, red is bad")
+        self.tooltips.add(self.stabilization_threshold_match_label, "Dynamically displays the match quality of the sprocket hole template. Green is good, orange acceptable, red is bad")
 
         # Extended search checkbox (replace radio buttons for fast/precise stabilization)
         self.extended_stabilization = tk.BooleanVar(value=False)
@@ -1002,7 +1024,7 @@ class UIManager:
             command=self.generic_widget_command, font=("Arial", self.font_size))
         #extended_stabilization_checkbox.grid(row=postprocessing_row, column=1, columnspan=1, sticky=W)
         self.extended_stabilization_checkbox.forget()
-        self.tootips.add(self.extended_stabilization_checkbox, "Extend the area where AfterScan looks for sprocket holes. In some cases this might help")
+        self.tooltips.add(self.extended_stabilization_checkbox, "Extend the area where AfterScan looks for sprocket holes. In some cases this might help")
 
         # Stabilization shift: Since film might not be centered around hole(s) this gives the option to move it up/down
         # Spinbox for gamma correction
@@ -1014,7 +1036,7 @@ class UIManager:
         self.stabilization_shift_x_spinbox = tk.Spinbox(self.postprocessing_frame, width=3, command=self.generic_widget_command,
             textvariable=self.stabilization_shift_x_value, from_=-150, to=150, increment=-5, font=("Arial", self.font_size))
         self.stabilization_shift_x_spinbox.grid(row=postprocessing_row, column=2, sticky=W)
-        self.tootips.add(self.stabilization_shift_x_spinbox, "Allows to shift the frame left or right after stabilization "
+        self.tooltips.add(self.stabilization_shift_x_spinbox, "Allows to shift the frame left or right after stabilization "
                                     "(to compensate for films where the frame is not centered around the hole/holes)")
         self.stabilization_shift_x_spinbox.bind("<FocusOut>", self.generic_widget_command)
 
@@ -1022,7 +1044,7 @@ class UIManager:
         self.stabilization_shift_y_spinbox = tk.Spinbox(self.postprocessing_frame, width=3, command=self.generic_widget_command,
             textvariable=self.stabilization_shift_y_value, from_=-150, to=150, increment=-5, font=("Arial", self.font_size))
         self.stabilization_shift_y_spinbox.grid(row=postprocessing_row, column=2, sticky=E)
-        self.tootips.add(self.stabilization_shift_y_spinbox, "Allows to shift the frame up or down after stabilization "
+        self.tooltips.add(self.stabilization_shift_y_spinbox, "Allows to shift the frame up or down after stabilization "
                                     "(to compensate for films where the frame is not centered around the hole/holes)")
         self.stabilization_shift_y_spinbox.bind("<FocusOut>", self.select_stabilization_shift_y)
 
@@ -1036,7 +1058,7 @@ class UIManager:
                             activebackground='green', activeforeground='white',
                             wraplength=120, font=("Arial", self.font_size))
         self.cropping_btn.grid(row=postprocessing_row, column=0, sticky=E)
-        self.tootips.add(self.cropping_btn, "Open popup window to define the cropping rectangle")
+        self.tooltips.add(self.cropping_btn, "Open popup window to define the cropping rectangle")
 
         self.perform_cropping = tk.BooleanVar(value=False)
         self.perform_cropping_checkbox = tk.Checkbutton(
@@ -1044,7 +1066,7 @@ class UIManager:
             onvalue=True, offvalue=False, command=self.generic_widget_command,
             width=4, font=("Arial", self.font_size))
         self.perform_cropping_checkbox.grid(row=postprocessing_row, column=1, sticky=W)
-        self.tootips.add(self.perform_cropping_checkbox, "Crop generated frames to the user-defined limits ('Define crop area' button)")
+        self.tooltips.add(self.perform_cropping_checkbox, "Crop generated frames to the user-defined limits ('Define crop area' button)")
 
         self.force_4_3_crop = tk.BooleanVar(value=False)
         self.force_4_3_crop_checkbox = tk.Checkbutton(
@@ -1052,7 +1074,7 @@ class UIManager:
             onvalue=True, offvalue=False, command=self.generic_widget_command,
             width=4, font=("Arial", self.font_size))
         self.force_4_3_crop_checkbox.grid(row=postprocessing_row, column=1, sticky=E)
-        self.tootips.add(self.force_4_3_crop_checkbox, "Enforce 4:3 aspect ratio when defining the cropping rectangle")
+        self.tooltips.add(self.force_4_3_crop_checkbox, "Enforce 4:3 aspect ratio when defining the cropping rectangle")
 
         self.force_16_9_crop = tk.BooleanVar(value=False)
         self.force_16_9_crop_checkbox = tk.Checkbutton(
@@ -1060,7 +1082,7 @@ class UIManager:
             onvalue=True, offvalue=False, command=self.generic_widget_command,
             width=4, font=("Arial", self.font_size))
         self.force_16_9_crop_checkbox.grid(row=postprocessing_row, column=2, sticky=W)
-        self.tootips.add(self.force_16_9_crop_checkbox, "Enforce 16:9 aspect ratio when defining the cropping rectangle")
+        self.tooltips.add(self.force_16_9_crop_checkbox, "Enforce 16:9 aspect ratio when defining the cropping rectangle")
 
         postprocessing_row += 1
 
@@ -1071,7 +1093,7 @@ class UIManager:
             onvalue=True, offvalue=False, command=self.generic_widget_command,
             font=("Arial", self.font_size))
         self.perform_denoise_checkbox.grid(row=postprocessing_row, column=0, sticky=W)
-        self.tootips.add(self.perform_denoise_checkbox, "Apply denoise algorithm (using OpenCV's 'fastNlMeansDenoisingColored') to the generated frames")
+        self.tooltips.add(self.perform_denoise_checkbox, "Apply denoise algorithm (using OpenCV's 'fastNlMeansDenoisingColored') to the generated frames")
 
         # Check box to perform sharpness
         self.perform_sharpness = tk.BooleanVar(value=False)
@@ -1080,7 +1102,7 @@ class UIManager:
             onvalue=True, offvalue=False, command=self.generic_widget_command,
             font=("Arial", self.font_size))
         self.perform_sharpness_checkbox.grid(row=postprocessing_row, column=1, sticky=W)
-        self.tootips.add(self.perform_sharpness_checkbox, "Apply sharpen algorithm (using OpenCV's 'filter2D') to the generated frames")
+        self.tooltips.add(self.perform_sharpness_checkbox, "Apply sharpen algorithm (using OpenCV's 'filter2D') to the generated frames")
 
         # Check box to do gamma correction
         self.perform_gamma_correction = tk.BooleanVar(value=False)
@@ -1089,14 +1111,14 @@ class UIManager:
             onvalue=True, offvalue=False, font=("Arial", self.font_size))
         self.perform_gamma_correction_checkbox.grid(row=postprocessing_row, column=2, sticky=W)
         self.perform_gamma_correction_checkbox.config(state=NORMAL)
-        self.tootips.add(self.perform_gamma_correction_checkbox, "Apply gamma correction to the generated frames")
+        self.tooltips.add(self.perform_gamma_correction_checkbox, "Apply gamma correction to the generated frames")
 
         # Spinbox for gamma correction
         self.gamma_correction_str = tk.StringVar(value="2.2")
         self.gamma_correction_spinbox = tk.Spinbox(self.postprocessing_frame, width=3, command=self.generic_widget_command,
             textvariable=self.gamma_correction_str, from_=0.1, to=4, format="%.1f", increment=0.1, font=("Arial", self.font_size))
         self.gamma_correction_spinbox.grid(row=postprocessing_row, column=2, sticky=E)
-        self.tootips.add(self.gamma_correction_spinbox, "Gamma correction value (default is 2.2, has to be greater than zero)")
+        self.tooltips.add(self.gamma_correction_spinbox, "Gamma correction value (default is 2.2, has to be greater than zero)")
         # Bind focus-out event to enforce the minimum value
         gamma_correction_spinbox.bind("<FocusOut>", self.generic_widget_command)
 
@@ -1113,15 +1135,15 @@ class UIManager:
         self.perform_fill_none_rb = Radiobutton(self.postprocessing_frame, text='No frame fill',
                                         variable=self.frame_fill_type, value='none', font=("Arial", self.font_size))
         self.perform_fill_none_rb.grid(row=postprocessing_row, column=0, sticky=W)
-        self.tootips.add(self.perform_fill_none_rb, "Badly aligned frames will be left with the missing part of the image black after stabilization")
+        self.tooltips.add(self.perform_fill_none_rb, "Badly aligned frames will be left with the missing part of the image black after stabilization")
         self.perform_fill_fake_rb = Radiobutton(self.postprocessing_frame, text='Fake fill',
                                         variable=self.frame_fill_type, value='fake', font=("Arial", self.font_size))
         self.perform_fill_fake_rb.grid(row=postprocessing_row, column=1, sticky=W)
-        self.tootips.add(self.perform_fill_fake_rb, "Badly aligned frames will have the missing part of the image completed with a fragment of the next/previous frame after stabilization")
+        self.tooltips.add(self.perform_fill_fake_rb, "Badly aligned frames will have the missing part of the image completed with a fragment of the next/previous frame after stabilization")
         self.perform_fill_dumb_rb = Radiobutton(self.postprocessing_frame, text='Dumb fill',
                                         variable=self.frame_fill_type, value='dumb', font=("Arial", self.font_size))
         self.perform_fill_dumb_rb.grid(row=postprocessing_row, column=2, sticky=W)
-        self.tootips.add(perform_fill_dumb_rb, "Badly aligned frames will have the missing part of the image filled with the adjacent pixel row after stabilization")
+        self.tooltips.add(perform_fill_dumb_rb, "Badly aligned frames will have the missing part of the image filled with the adjacent pixel row after stabilization")
         self.frame_fill_type.set('fake')
 
         postprocessing_row += 1
@@ -1147,7 +1169,7 @@ class UIManager:
                                                 width=5, font=("Arial", self.font_size))
         self.generate_video_checkbox.grid(row=video_row, column=0, sticky=W, padx=5)
         self.generate_video_checkbox.config(state=NORMAL)
-        self.tootips.add(self.generate_video_checkbox, "Generate an MP4 video, once all frames have been processed")
+        self.tooltips.add(self.generate_video_checkbox, "Generate an MP4 video, once all frames have been processed")
 
         # Check box to skip frame regeneration
         self.skip_frame_regeneration = tk.BooleanVar(value=False)
@@ -1158,7 +1180,7 @@ class UIManager:
         self.skip_frame_regeneration_cb.grid(row=video_row, column=1,
                                         columnspan=2, sticky=W, padx=5)
         self.skip_frame_regeneration_cb.config(state=NORMAL)
-        self.tootips.add(self.skip_frame_regeneration_cb, "If frames have ben already generated in a previous run, and you want to only generate the vieo, check this one")
+        self.tooltips.add(self.skip_frame_regeneration_cb, "If frames have ben already generated in a previous run, and you want to only generate the vieo, check this one")
 
         video_row += 1
 
@@ -1167,14 +1189,14 @@ class UIManager:
         self.video_target_dir_entry = Entry(self.video_frame, textvariable=self.video_target_dir_str, width=30, borderwidth=1, font=("Arial", self.font_size))
         self.video_target_dir_entry.grid(row=video_row, column=0, columnspan=2, sticky=W, padx=5)
         self.video_target_dir_entry.bind('<<Paste>>', lambda event, entry=self.video_target_dir_entry: on_paste_all_entries(event, entry))
-        self.tootips.add(self.video_target_dir_entry, "Directory where the generated video will be stored")
+        self.tooltips.add(self.video_target_dir_entry, "Directory where the generated video will be stored")
 
         self.video_target_folder_btn = Button(self.video_frame, text='Target', width=6,
                                 height=1, command=self.set_video_target_folder,
                                 activebackground='green',
                                 activeforeground='white', wraplength=80, font=("Arial", self.font_size))
         self.video_target_folder_btn.grid(row=video_row, column=2, columnspan=2, sticky=W, padx=5)
-        self.tootips.add(self.video_target_folder_btn, "Selects directory where the generated video will be stored")
+        self.tooltips.add(self.video_target_folder_btn, "Selects directory where the generated video will be stored")
         video_row += 1
 
         # Video filename
@@ -1186,7 +1208,7 @@ class UIManager:
                                     width=26 if self.big_size else 26, borderwidth=1, font=("Arial", self.font_size))
         video_filename_name.grid(row=video_row, column=1, columnspan=2, sticky=W, padx=5)
         video_filename_name.bind('<<Paste>>', lambda event, entry=video_filename_name: on_paste_all_entries(event, entry))
-        self.tootips.add(video_filename_name, "Filename of video to be created")
+        self.tooltips.add(video_filename_name, "Filename of video to be created")
 
         video_row += 1
 
@@ -1199,7 +1221,7 @@ class UIManager:
                                 width=26 if self.big_size else 26, borderwidth=1, font=("Arial", self.font_size))
         self.video_title_name.grid(row=video_row, column=1, columnspan=2, sticky=W, padx=5)
         self.video_title_name.bind('<<Paste>>', lambda event, entry=self.video_title_name: on_paste_all_entries(event, entry))
-        self.tootips.add(self.video_title_name, "Video title. If entered, a simple title sequence will be generated at the start of the video, using a sequence randomly selected from the same video, running at half speed")
+        self.tooltips.add(self.video_title_name, "Video title. If entered, a simple title sequence will be generated at the start of the video, using a sequence randomly selected from the same video, running at half speed")
 
         video_row += 1
 
@@ -1237,7 +1259,7 @@ class UIManager:
         self.video_fps_dropdown.config(takefocus=1, font=("Arial", self.font_size))
         self.video_fps_dropdown.pack(side=LEFT, anchor=E, padx=5)
         self.video_fps_dropdown.config(state=DISABLED)
-        self.tootips.add(self.video_fps_dropdown, "Number of frames per second (FPS) of the video to be generated. Usually Super8 goes at 18 FPS, and Regular 8 at 16 FPS, although some cameras allowed to use other speeds (faster for smoother movement, slower for extended play time)")
+        self.tooltips.add(self.video_fps_dropdown, "Number of frames per second (FPS) of the video to be generated. Usually Super8 goes at 18 FPS, and Regular 8 at 16 FPS, although some cameras allowed to use other speeds (faster for smoother movement, slower for extended play time)")
 
         # Create FFmpeg preset options
         self.ffmpeg_preset_frame = Frame(self.video_frame)
@@ -1248,19 +1270,19 @@ class UIManager:
                                         variable=self.ffmpeg_preset, value='veryslow', font=("Arial", self.font_size))
         self.ffmpeg_preset_rb1.pack(side=TOP, anchor=W, padx=5)
         self.ffmpeg_preset_rb1.config(state=DISABLED)
-        self.tootips.add(self.ffmpeg_preset_rb1, "Best quality, but very slow encoding. Maps to the same ffmpeg option")
+        self.tooltips.add(self.ffmpeg_preset_rb1, "Best quality, but very slow encoding. Maps to the same ffmpeg option")
 
         self.ffmpeg_preset_rb2 = Radiobutton(self.ffmpeg_preset_frame, text="Medium",
                                         variable=self.ffmpeg_preset, value='medium', font=("Arial", self.font_size))
         self.ffmpeg_preset_rb2.pack(side=TOP, anchor=W, padx=5)
         self.ffmpeg_preset_rb2.config(state=DISABLED)
-        self.tootips.add(self.ffmpeg_preset_rb2, "Compromise between quality and encoding speed. Maps to the same ffmpeg option")
+        self.tooltips.add(self.ffmpeg_preset_rb2, "Compromise between quality and encoding speed. Maps to the same ffmpeg option")
         self.ffmpeg_preset_rb3 = Radiobutton(self.ffmpeg_preset_frame,
                                         text="Fast (low quality)",
                                         variable=self.ffmpeg_preset, value='veryfast', font=("Arial", self.font_size))
         self.ffmpeg_preset_rb3.pack(side=TOP, anchor=W, padx=5)
         self.ffmpeg_preset_rb3.config(state=DISABLED)
-        self.tootips.add(self.ffmpeg_preset_rb3, "Faster encoding speed, lower quality (but not so much IMHO). Maps to the same ffmpeg option")
+        self.tooltips.add(self.ffmpeg_preset_rb3, "Faster encoding speed, lower quality (but not so much IMHO). Maps to the same ffmpeg option")
         self.ffmpeg_preset.set('medium')
         video_row += 1
 
@@ -1283,7 +1305,7 @@ class UIManager:
         self.resolution_dropdown.config(takefocus=1, font=("Arial", self.font_size))
         self.resolution_dropdown.pack(side=LEFT, anchor=E, padx=5)
         self.resolution_dropdown.config(state=DISABLED)
-        self.tootips.add(self.resolution_dropdown, "Resolution to be used when generating the video")
+        self.tooltips.add(self.resolution_dropdown, "Resolution to be used when generating the video")
 
         # Create button to play the video
         self.video_play_btn = Button(self.video_frame, text='▶', width=8,
@@ -1291,7 +1313,7 @@ class UIManager:
                                 activebackground='green',
                                 activeforeground='white', wraplength=80, font=("Arial", self.font_size))
         self.video_play_btn.grid(row=video_row, column=2, sticky=E, padx=5)
-        self.tootips.add(self.video_play_btn, "Play the generated video")
+        self.tooltips.add(self.video_play_btn, "Play the generated video")
 
         video_row += 1
 
@@ -1318,7 +1340,7 @@ class UIManager:
         self.display_template_popup_btn.config(relief=RAISED)
         self.display_template_popup_btn.grid(row=extra_row, column=0, padx=5, sticky="nsew")
         ### extra_frame.grid_columnconfigure(0, weight=1)
-        self.tootips.add(self.display_template_popup_btn, "Display popup window with dynamic debug information.Useful for developers only")
+        self.tooltips.add(self.display_template_popup_btn, "Display popup window with dynamic debug information.Useful for developers only")
 
         # Settings button, at the bottom of top left area
         # TODO: Copy and adapt legacy code for cmd_settings_popup
@@ -1327,7 +1349,7 @@ class UIManager:
                             relief=RAISED, font=("Arial", self.font_size), name='options_btn')
         self.options_btn.widget_type = "general"
         self.options_btn.grid(row=extra_row, column=1, padx=5, sticky="nsew")
-        self.tootips.add(self.options_btn, "Set AfterScan options.")
+        self.tooltips.add(self.options_btn, "Set AfterScan options.")
         extra_row += 1
 
     def _init_job_list_section(self):
@@ -1395,28 +1417,28 @@ class UIManager:
                         command=job_list_add_current, activebackground='green',
                         activeforeground='white', wraplength=100, font=("Arial", self.font_size))
         self.add_job_btn.pack(side=TOP, padx=2, pady=2)
-        self.tootips.add(self.add_job_btn, "Add to job list a new job using the current settings defined on the right area of the AfterScan window")
+        self.tooltips.add(self.add_job_btn, "Add to job list a new job using the current settings defined on the right area of the AfterScan window")
 
         # Delete job button
         self.delete_job_btn = Button(self.job_list_btn_frame, text="Delete job", width=12, height=1,
                         command=job_list_delete_selected, activebackground='green',
                         activeforeground='white', wraplength=100, font=("Arial", self.font_size))
         self.delete_job_btn.pack(side=TOP, padx=2, pady=2)
-        self.tootips.add(self.delete_job_btn, "Delete currently selected job from list")
+        self.tooltips.add(self.delete_job_btn, "Delete currently selected job from list")
 
         # Rerun job button
         self.rerun_job_btn = Button(self.job_list_btn_frame, text="Rerun job", width=12, height=1,
                         command=job_list_rerun_selected, activebackground='green',
                         activeforeground='white', wraplength=100, font=("Arial", self.font_size))
         self.rerun_job_btn.pack(side=TOP, padx=2, pady=2)
-        self.tootips.add(self.rerun_job_btn, "Toggle 'run' state of currently selected job in list")
+        self.tooltips.add(self.rerun_job_btn, "Toggle 'run' state of currently selected job in list")
 
         # Start processing job button
         self.start_batch_btn = Button(self.job_list_btn_frame, text="Start batch", width=12, height=1,
                         command=start_processing_job_list, activebackground='green',
                         activeforeground='white', wraplength=100, font=("Arial", self.font_size))
         self.start_batch_btn.pack(side=TOP, padx=2, pady=2)
-        self.tootips.add(self.start_batch_btn, "Start processing jobs in list")
+        self.tooltips.add(self.start_batch_btn, "Start processing jobs in list")
 
         # Suspend on end checkbox
         # suspend_on_joblist_end = tk.BooleanVar(value=False)
@@ -1432,15 +1454,15 @@ class UIManager:
         self.suspend_on_batch_completion_rb = Radiobutton(self.job_list_btn_frame, text="Job completion",
                                     variable=self.suspend_on_completion, value='job_completion', font=("Arial", self.font_size))
         self.suspend_on_batch_completion_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
-        self.tootips.add(self.suspend_on_batch_completion_rb, "Suspend computer when all jobs in list have been processed")
+        self.tooltips.add(self.suspend_on_batch_completion_rb, "Suspend computer when all jobs in list have been processed")
         self.suspend_on_job_completion_rb = Radiobutton(self.job_list_btn_frame, text="Batch completion",
                                     variable=self.suspend_on_completion, value='batch_completion', font=("Arial", self.font_size))
         self.suspend_on_job_completion_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
-        self.tootips.add(self.suspend_on_batch_completion_rb, "Suspend computer when current job being processed is complete")
+        self.tooltips.add(self.suspend_on_batch_completion_rb, "Suspend computer when current job being processed is complete")
         self.no_suspend_rb = Radiobutton(self.job_list_btn_frame, text="No suspend",
                                     variable=self.suspend_on_completion, value='no_suspend', font=("Arial", self.font_size))
         self.no_suspend_rb.pack(side=TOP, anchor=W, padx=2, pady=2)
-        self.tootips.add(self.suspend_on_batch_completion_rb, "Do not suspend when done")
+        self.tooltips.add(self.suspend_on_batch_completion_rb, "Do not suspend when done")
 
         self.suspend_on_completion.set("no_suspend")
 
