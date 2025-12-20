@@ -28,10 +28,10 @@ from constants import (EXIT_APP, START_CONVERT)
 from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, JOB_LIST_NAME_LENGTH,
                        JOB_LIST_DESCRIPTION_LENGTH)
 # Shared Store constants
-from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
-                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
+from constants import (CONFIG_MANAGER, TEMPLATE_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
+                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, RESOURCES_DIR,
                        UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
-                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
+                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, 
                        ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
                        ROTATION_ANGLE, STABILIZATION_THRESHOLD, LOW_CONTRAST_CUSTOM_TEMPLATE, 
                        EXTENDED_STABILIZATION, CUSTOM_TEMPLATE_DEFINED, CUSTOM_TEMPLATE_NAME, 
@@ -45,7 +45,9 @@ from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FIL
                        FORCE_SMALL_SIZE, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS, LOG_LEVEL, 
                        NUM_THREADS, TEMPORAL_DENOISE_SUPPORTED, UI_MANAGER, CONVERT_LOOP_RUNNING, 
                        CONVERT_LOOP_EXIT_REQUESTED, FIRST_ABSOLUTE_FRAME, FRAME_SCALE_REFRESH_DONE, 
-                       FRAME_SCALE_REFRESH_PENDING)
+                       FRAME_SCALE_REFRESH_PENDING, RECTANGLE_ACTION_ONGOING, RECTANGLE_REFRESH_REQUIRED,
+                       RECTANGLE_BASE_IMAGE, RECTANGLE_ORIGINAL_IMAGE, RECTANGLE_LINE_THICKNESS,
+                       CROP_AREA_DEFINED)
 
 
 # --- 1. The Centralized State Store (Data Access) ---
@@ -65,6 +67,7 @@ class AppStateStore:
         # Initializing the global variables the UI needs access to
         self.state = {
             CONFIG_MANAGER: None,
+            TEMPLATE_MANAGER: None,
             TOOLTIPS: None,
             EVENT_BUS: None,
             FONT_SIZE: 11,
@@ -77,6 +80,7 @@ class AppStateStore:
             PREVIEW_HEIGHT: 0,
             BIG_SIZE: True,
             SCRIPT_DIR: "",
+            RESOURCES_DIR: "",
             UI_INIT_DONE: False,
             SAVE_BG: "",
             SAVE_FG: "",
@@ -137,7 +141,13 @@ class AppStateStore:
             CONVERT_LOOP_EXIT_REQUESTED: False,
             FIRST_ABSOLUTE_FRAME: 0,
             FRAME_SCALE_REFRESH_DONE: True,
-            FRAME_SCALE_REFRESH_PENDING: False
+            FRAME_SCALE_REFRESH_PENDING: False,
+            RECTANGLE_ACTION_ONGOING: "",
+            RECTANGLE_REFRESH_REQUIRED: False,
+            RECTANGLE_BASE_IMAGE: None, 
+            RECTANGLE_ORIGINAL_IMAGE: None,
+            RECTANGLE_LINE_THICKNESS: 1,
+            CROP_AREA_DEFINED: False
         }
 
     def get_state(self, key: str):

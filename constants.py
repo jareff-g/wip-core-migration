@@ -28,6 +28,11 @@ __status__ = "Development"
 TBD_DEFAULT_PROJECT_ID = "P-000-NEW_SESSION"
 TBD_MAX_FILE_SIZE_MB = 1024
 
+# --- Project value constants ---
+THRESHOLD_DEFAULT = 220.0
+CROPPING_WINDOW_TITLE = 'Select area to crop, press Enter to confirm, Escape to cancel'
+CUSTOM_TEMPLATE_WINDOW_TITLE = 'Select area with film holes to use as template. Press Enter to confirm, Escape to cancel'
+
 # --- Mode Constants (Used for AppStateStore keys and logic) ---
 TBD_MODE_INSPECTION = "Inspection"
 TBD_MODE_ANALYSIS = "Analysis"
@@ -47,6 +52,7 @@ LAST_ITEM_TOKEN = "LAST_ITEM"
 
 # --- Data Shared store ids ---
 CONFIG_MANAGER = "config_manager"
+TEMPLATE_MANAGER = "template_manager"
 TOOLTIPS = "tooltips"
 EVENT_BUS = "event_bus"
 FONT_SIZE = "font_size"
@@ -59,6 +65,7 @@ PREVIEW_WIDTH = "preview_width"
 PREVIEW_HEIGHT = "preview_height"
 BIG_SIZE = "big_size"
 SCRIPT_DIR = "script_dir"
+RESOURCES_DIR = "resources_dir"
 UI_INIT_DONE = "ui_init_done"
 PROJECT_NAME = "project_name"
 SAVE_BG = "save_bg"
@@ -122,5 +129,13 @@ CONVERT_LOOP_EXIT_REQUESTED = "convert_loop_exit_requested"
 FIRST_ABSOLUTE_FRAME = "first_absolute_frame"
 FRAME_SCALE_REFRESH_DONE = "frame_scale_refresh_done"
 FRAME_SCALE_REFRESH_PENDING = "frame_scale_refresh_pending"
+RECTANGLE_ACTION_ONGOING = "rectangle_action_ongoing"
+RECTANGLE_REFRESH_REQUIRED = "rectangle_refresh_required"
+RECTANGLE_BASE_IMAGE = "rectangle_base_image"
+RECTANGLE_ORIGINAL_IMAGE = "rectangle_original_image"
+RECTANGLE_LINE_THICKNESS = "rectangle_line_thickness"
+CROP_AREA_DEFINED = "crop_area_defined"
+
+
 
 

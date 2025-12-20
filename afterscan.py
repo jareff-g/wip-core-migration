@@ -135,8 +135,8 @@ from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, 
                        JOB_LIST_DESCRIPTION_LENGTH)
 # Shared Store constants
 # Shared Store constants
-from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
-                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
+from constants import (CONFIG_MANAGER, TEMPLATE_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
+                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, RESOURCES_DIR, 
                        UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
                        PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
                        ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
@@ -202,6 +202,7 @@ class AfterScanApp:
         # --- User interface ---
         self.win = None
         self.script_dir = ''
+        self.resources_dir = ''
         self.top_win_x = 0
         self.top_win_y = 0
         # --- Graphics processing libraries ---
@@ -531,6 +532,9 @@ class AfterScanApp:
         os.chdir(self.script_dir) 
         self.store.update_state(SCRIPT_DIR, self.script_dir)
 
+        self.resources_dir = os.path.join(self.script_dir, "Resources")
+        self.store.update_state(RESOURCES_DIR, self.resources_dir)
+
         if self.store.get_state(LOG_LEVEL) != None:
             effective_log_level = self.store.get_state(LOG_LEVEL)    # Command line value
         else:
@@ -544,6 +548,7 @@ class AfterScanApp:
 
         """Create and initialize TemplateManager: Add default templates to template list."""
         self.template_manager = TemplateManager.initialize(self.script_dir)
+        self.store.update_state(TEMPLATE_MANAGER, self.template_manager)
         print(f"Templates initialized")
         """Create and initialize ConfigurationManager."""
         self.config_manager = ConfigurationManager.initialize(self.script_dir)

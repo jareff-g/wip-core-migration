@@ -33,7 +33,7 @@ from configuration_manager import ProjectConfigEntry
 from application_services import AppStateStore
 # Shared Store constants
 from constants import (PROJECT_NAME, CURRENT_FRAME, SOURCE_DIR, 
-                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
+                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, 
                        ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
                        ROTATION_ANGLE, STABILIZATION_THRESHOLD, LOW_CONTRAST_CUSTOM_TEMPLATE, 
                        EXTENDED_STABILIZATION, CUSTOM_TEMPLATE_DEFINED, CUSTOM_TEMPLATE_NAME, 
@@ -85,7 +85,7 @@ class RefreshStoreFromConfig:
 
     def _load_settings(self):
 '''
-def refresh_store_from_config(config_source: ProjectConfigEntry, store_target: AppStateStore):
+def refresh_store_from_config(store_target: AppStateStore, config_source: ProjectConfigEntry):
         settings = {}
         config = config_source
 

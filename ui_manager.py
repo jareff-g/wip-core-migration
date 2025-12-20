@@ -53,10 +53,10 @@ from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, 
                        JOB_LIST_DESCRIPTION_LENGTH)
 # Shared Store constants
 # Shared Store constants
-from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
-                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, 
+from constants import (CONFIG_MANAGER, TEMPLATE_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
+                       MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, RESOURCES_DIR,
                        UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
-                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
+                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, 
                        ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
                        ROTATION_ANGLE, STABILIZATION_THRESHOLD, LOW_CONTRAST_CUSTOM_TEMPLATE, 
                        EXTENDED_STABILIZATION, CUSTOM_TEMPLATE_DEFINED, CUSTOM_TEMPLATE_NAME, 
@@ -69,7 +69,7 @@ from constants import (CONFIG_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FIL
                        PRECISE_TEMPLATE_MATCH, FFMPEG_INSTALLED, FFMPEG_INSTALLED, IS_DEMO, USE_SIMPLE_STABILIZATION,
                        FORCE_SMALL_SIZE, NUM_THREADS, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS, LOG_LEVEL,
                        CONVERT_LOOP_RUNNING, CONVERT_LOOP_EXIT_REQUESTED, FIRST_ABSOLUTE_FRAME, FRAME_SCALE_REFRESH_DONE, 
-                       FRAME_SCALE_REFRESH_PENDING)
+                       FRAME_SCALE_REFRESH_PENDING, RECTANGLE_ACTION_ONGOING)
 
 
 
@@ -162,7 +162,7 @@ class UIManager:
             debug_template_refresh_template()
             pass
         else:
-            set_film_type()
+            self.set_film_type()
         self.perform_cropping.set(self.store.get_state(PERFORM_CROPPING))
         self.perform_denoise.set(self.store.get_state(PERFORM_DENOISE))
         self.perform_sharpness.set(self.store.get_state(PERFORM_SHARPNESS))
@@ -645,6 +645,23 @@ class UIManager:
         # Get the current value from the scale widget
         select_scale_frame(frame_slider.get())
 
+    def set_film_type(self):
+        """ Retrieves film type from UI (master) and updates value in shared store adn config manager (also active template) """
+        film_type = self.film_type.get()
+        template_mngr = self.store.get_state(TEMPLATE_MANAGER)
+        config_mngr = self.store.get_state(CONFIG_MANAGER)
+        if template_mngr.set_active_template(film_type, film_type):
+            config_mngr.set_film_type(film_type)
+            debug_template_refresh_template()
+            self.video_fps_dropdown_selected.set('18' if film_type == 'S8' else '16')
+            config_mngr.set_video_fps(18 if film_type == 'S8' else 16)
+            return True
+        else:
+            tk.messagebox.showerror(
+                "Default template could not be set",
+                "Error while reverting back to standard template after disabling custom.")
+            return False
+
     def play_video(self):
         target_video_filename = self.video_filename_str.get()
         if not self.launch_video(os.path.join(self.video_target_dir_str.get(), target_video_filename)):
@@ -691,6 +708,121 @@ class UIManager:
             logging.error(f"An error occurred while trying to launch the video: {e}")
             return False
 
+    # ------------------------------------------------------------------
+    # --- UI callbacks to define custom templates adn cropping areas ---
+    # ------------------------------------------------------------------
+
+    def select_custom_template(self):
+        # First, define custom template name and filename in case it needs to be deleted
+        # Template Name = Last folder in the path, plus Frame From,  Frame to it not encoding all
+        template_name = f"{os.path.split(self.store.get_state(SOURCE_DIR))[-1]}"
+        # Set filename
+        template_filename = f"Pattern.custom.{template_name}.jpg"
+        full_path_template_filename = os.path.join(self.store.get_state(RESOURCES_DIR), template_filename)
+
+        template_mngr = self.store.get_state(TEMPLATE_MANAGER)
+        if template_mngr.get_active_type() == 'custom':
+            if os.path.isfile(template_mngr.get_active_filename()):
+                os.remove(template_mngr.get_active_filename())
+            if not self.set_film_type():
+                return
+        else:
+            if len(source_dir_file_list) <= 0:
+                tk.messagebox.showwarning(
+                    "No frame set loaded",
+                    "A set of frames is required before a custom template might be defined."
+                    "Please select a source folder before proceeding.")
+                return
+            # Disable all buttons in main window
+            self.widget_status_update(DISABLED, 0)
+            FrameSync_Viewer_popup_update_widgets(DISABLED)
+
+            self.win.update()
+
+            """
+            Flag action so that generic recatngle drawing functions know which action is happening,
+            so that specific behaviour (drawing area, window title) can be applied.
+            """
+            self.store.update_state(RECTANGLE_ACTION_ONGOING, 'custom_template')
+            """ For reference, we keep here the window title for custom templates, to be moved later on 
+            rectangle_window_title = 'Select area with film holes to use as template. ' \
+                                     'Press Enter to confirm, Escape to cancel'
+            """
+
+            if select_rectangle_area(is_cropping=False) and current_frame < len(source_dir_file_list):
+                # Extract template from image
+                file = source_dir_file_list[current_frame]
+                file3 = os.path.join(source_dir, frame_hdr_input_filename_pattern % (current_frame + 1, 2, file_type))
+                if os.path.isfile(file3):  # If hdr frames exist, add them
+                    file = file3
+                full_img = cv2.imread(file, cv2.IMREAD_UNCHANGED)
+                # test to stabilize custom template itself using simple algorithm (commented as it affects custom template definition)
+                #move_x, move_y = calculate_frame_displacement_simple(current_frame, img)
+                #img = shift_image(img, img.shape[1], img.shape[0], move_x, move_y)
+
+                img = crop_image(full_img, rectangle_top_left, rectangle_bottom_right)
+                img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+                # Apply Otsu's thresholding if requested (for low contrast frames)
+                if low_contrast_custom_template.get():
+                    img_final = cv2.threshold(img_gray, 100, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+                else:
+                    # img_bw = cv2.threshold(img_gray, float(stabilization_threshold), 255, cv2.THRESH_TRUNC | cv2.THRESH_TRIANGLE)[1]
+                    img_bw = cv2.threshold(img_gray, float(stabilization_threshold_default), 255, cv2.THRESH_BINARY)[1]
+                    # img_edges = cv2.Canny(image=img_bw, threshold1=100, threshold2=20)  # Canny Edge Detection
+                    img_final = img_bw
+
+                # Write template to disk
+                config_manager.set_custom_template_filename(full_path_template_filename)
+                cv2.imwrite(full_path_template_filename, img_final)
+
+                # Add template to list
+                template_manager.add(template_name, full_path_template_filename, 'custom', rectangle_top_left)   # size and template automatically refreshed upon addition
+                logging.debug(f"Template top left-size: {template_manager.get_active_position()} - {template_manager.get_active_size()}")
+                widget_status_update(NORMAL, 0)
+                FrameSync_Viewer_popup_update_widgets(NORMAL)
+                custom_stabilization_btn.config(relief=SUNKEN)
+
+                config_manager.set_custom_template_expected_pos(template_manager.get_active_position())
+                config_manager.set_custom_template_name(template_manager.get_active_name())
+
+                define_template_search_area(full_img)  # Adjust hole search area to new template
+
+                if enable_rectangle_popup:
+                    # Display saved template for information
+                    custom_template_window_title = "Captured custom template. Press any key to continue."
+                    win_x = int(img_final.shape[1] * area_select_image_factor)
+                    win_y = int(img_final.shape[0] * area_select_image_factor)
+                    cv2.namedWindow(custom_template_window_title, flags=cv2.WINDOW_GUI_NORMAL)
+                    cv2.imshow(custom_template_window_title, img_final)
+
+                    # Cannot force window to be wider than required since in Windows image is expanded as well
+                    cv2.resizeWindow(custom_template_window_title, round(win_x / 2), round(win_y / 2))
+                    cv2.moveWindow(custom_template_window_title, win.winfo_x() + 100, win.winfo_y() + 30)
+                    window_visible = True
+                    while cv2.waitKeyEx(100) == -1:
+                        window_visible = cv2.getWindowProperty(custom_template_window_title, cv2.WND_PROP_VISIBLE)
+                        if window_visible <= 0:
+                            break
+                    if window_visible > 0:
+                        cv2.destroyAllWindows()
+            else:
+                if os.path.isfile(full_path_template_filename):  # Delete Template if it exist
+                    os.remove(full_path_template_filename)
+                    if not set_film_type():
+                        return
+                custom_stabilization_btn.config(relief=RAISED)
+                widget_status_update(DISABLED, 0)
+                FrameSync_Viewer_popup_update_widgets(DISABLED)
+
+        config_manager.set_custom_template_defined(True if template_manager.get_active_type() == 'custom' else False)
+        debug_template_refresh_template()
+
+        # Enable all buttons in main window
+        widget_status_update(NORMAL, 0)
+        FrameSync_Viewer_popup_update_widgets(NORMAL)
+
+        win.update()
 
     # --------------------------------------
     # --- User Interface building blocks ---
@@ -897,11 +1029,11 @@ class UIManager:
 
         # Radio buttons to select R8/S8. Required to select adequate pattern, and match position
         self.film_type = StringVar()
-        self.film_type_S8_rb = Radiobutton(self.postprocessing_frame, text="Super 8", variable=self.film_type, command=set_film_type,
+        self.film_type_S8_rb = Radiobutton(self.postprocessing_frame, text="Super 8", variable=self.film_type, command=self.set_film_type,
                                     width=11 if self.big_size else 11, value='S8', font=("Arial", self.font_size))
         self.film_type_S8_rb.grid(row=postprocessing_row, column=0, sticky=W)
         self.tooltips.add(self.film_type_S8_rb, "Handle as Super 8 film")
-        self.film_type_R8_rb = Radiobutton(self.postprocessing_frame, text="Regular 8", variable=self.film_type, command=set_film_type,
+        self.film_type_R8_rb = Radiobutton(self.postprocessing_frame, text="Regular 8", variable=self.film_type, command=self.set_film_type,
                                     width=11 if self.big_size else 11, value='R8', font=("Arial", self.font_size))
         self.film_type_R8_rb.grid(row=postprocessing_row, column=1, sticky=W)
         self.tooltips.add(self.film_type_R8_rb, "Handle as 8mm (Regular 8) film")
@@ -979,7 +1111,7 @@ class UIManager:
 
         ### Stabilization controls
         # Custom film perforation template
-        # TODO: Copy adn adapt select_custom_template
+        # TODO: Copy and adapt select_custom_template
         self.custom_stabilization_btn = Button(self.postprocessing_frame,
                                         text='Define custom template',
                                         width=18, height=1,
