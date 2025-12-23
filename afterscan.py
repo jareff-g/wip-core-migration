@@ -138,7 +138,7 @@ from constants import (END_TOKEN, LAST_ITEM_TOKEN, APP_VERSION, BATCH_JOB_LIST, 
 from constants import (CONFIG_MANAGER, TEMPLATE_MANAGER, EVENT_BUS, IGNORE_CONFIG, CONFIG_FROM_FILE, FONT_SIZE,
                        MAIN_WIN, PREVIEW_WIDTH, PREVIEW_HEIGHT, TOOLTIPS, BIG_SIZE, SCRIPT_DIR, RESOURCES_DIR, 
                        UI_INIT_DONE, PROJECT_NAME, SAVE_BG, SAVE_FG, CURRENT_FRAME, SOURCE_DIR, 
-                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, CURRENT_FRAME, 
+                       PROJECT_NAME, TARGET_DIR, VIDEO_TARGET_DIR, BATCH_JOB_RUNNING, 
                        ENCODE_ALL_FRAMES, FRAME_FROM, FRAME_TO, FRAMES_TO_ENCODE, FILM_TYPE, 
                        ROTATION_ANGLE, STABILIZATION_THRESHOLD, LOW_CONTRAST_CUSTOM_TEMPLATE, 
                        EXTENDED_STABILIZATION, CUSTOM_TEMPLATE_DEFINED, CUSTOM_TEMPLATE_NAME, 
@@ -150,7 +150,7 @@ from constants import (CONFIG_MANAGER, TEMPLATE_MANAGER, EVENT_BUS, IGNORE_CONFI
                        VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
                        PRECISE_TEMPLATE_MATCH, FFMPEG_INSTALLED, IS_DEMO, USE_SIMPLE_STABILIZATION, 
                        FORCE_SMALL_SIZE, NUM_THREADS, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS,
-                       LOG_LEVEL, TEMPORAL_DENOISE_SUPPORTED, UI_MANAGER)
+                       LOG_LEVEL, TEMPORAL_DENOISE_SUPPORTED, UI_MANAGER, SOURCE_DIR_FILE_LIST, TARGET_DIR_FILE_LIST)
 
 
 
@@ -392,21 +392,8 @@ class AfterScanApp:
 
     # TODO: Complete start_convert adapted to new code
     def _start_convert(self):
-        global convert_loop_exit_requested, convert_loop_running
-        global generate_video
-        global video_writer
-        global source_dir_file_list
-        global target_video_filename
-        global current_frame, start_frame
-        global encode_all_frames
-        global frames_to_encode
-        global ffmpeg_success, ffmpeg_encoding_status
-        global frame_from_str, frame_to_str
-        global project_name
-        global batch_job_running
-        global current_job_entry
-        global csv_filename, csv_path_name
-        global current_bad_frame_index
+        # Load frequently used items from shared store
+        source_dir_file_list = self.store.get_state(SOURCE_DIR_FILE_LIST)
 
         if convert_loop_running:
             convert_loop_exit_requested = True
@@ -437,7 +424,7 @@ class AfterScanApp:
                 frames_to_encode = int(frame_to_str.get()) - int(frame_from_str.get()) + 1
                 if start_frame + frames_to_encode > len(source_dir_file_list):
                     frames_to_encode = len(source_dir_file_list) - start_frame
-            current_frame = start_frame
+            self.store.update_state(CURRENT_FRAME, start_frame)
             if frames_to_encode <= 1:
                 tk.messagebox.showwarning(
                     "No frames match range",

@@ -29,6 +29,10 @@ __status__ = "Development"
 
 import os
 import logging
+import tkinter as tk
+from glob import glob
+import re
+import cv2
 from configuration_manager import ProjectConfigEntry
 from application_services import AppStateStore
 # Shared Store constants
@@ -43,7 +47,9 @@ from constants import (PROJECT_NAME, CURRENT_FRAME, SOURCE_DIR,
                        FORCE_4_3, FORCE_16_9, FRAME_FILL_TYPE, CROP_RECTANGLE, PERFORM_STABILIZATION, 
                        STABILIZATION_SHIFT_X, STABILIZATION_SHIFT_Y, PERFORM_ROTATION, VIDEO_FPS, 
                        VIDEO_RESOLUTION, CURRENT_BAD_FRAME_INDEX, USER_DEFINED_LEFT_STRIPE_WIDTH_PROPORTION, 
-                       PRECISE_TEMPLATE_MATCH)
+                       PRECISE_TEMPLATE_MATCH, TEMPLATE_MANAGER, FRAME_INPUT_FILENAME_PATTERN_LIST_JPG, 
+                       FRAME_INPUT_FILENAME_PATTERN_LIST_PNG, HDR_INPUT_FILENAME_PATTERN_LIST_JPG, 
+                       HDR_INPUT_FILENAME_PATTERN_LIST_PNG, UI_MANAGER, FILE_TYPE_OUT, FRAME_WIDTH, FRAME_HEIGHT)
 
 
 '''We do not really need a class here. Converting to static function
@@ -265,3 +271,75 @@ def refresh_store_from_config(store_target: AppStateStore, config_source: Projec
         store_target.update(settings)
 
 
+def get_source_dir_file_list(store_target: AppStateStore, config_source: ProjectConfigEntry):
+    source_dir = store_target.get_state(SOURCE_DIR)
+    current_frame = store_target.get_state(CURRENT_FRAME)
+    template_manager = store_target.get_state(TEMPLATE_MANAGER)
+    ui_manager = store_target.get_state(UI_MANAGER)
+
+    
+    if not os.path.isdir(source_dir):
+        tk.messagebox.showerror("Error!",
+                                "Source folder does not exist. "
+                                "Please specify a different one and try again")
+        ui_manager.frames_target_dir.delete(0, 'end')
+        return 0
+
+    # Try first with standard scan filename template
+    source_dir_file_list_jpg = list(glob(os.path.join(
+        source_dir,
+        FRAME_INPUT_FILENAME_PATTERN_LIST_JPG)))
+    if len(source_dir_file_list_jpg) == 0:     # Only try to read if there are no JPG at all
+        source_dir_file_list_png = list(glob(os.path.join(
+            source_dir,
+            FRAME_INPUT_FILENAME_PATTERN_LIST_PNG)))
+        source_dir_file_list = sorted(source_dir_file_list_png)
+        store_target.update_state(FILE_TYPE_OUT, 'png')  # If we have png files in the input, we default to png for the output
+    else:
+        source_dir_file_list = sorted(source_dir_file_list_jpg)
+        store_target.update_state(FILE_TYPE_OUT, 'jpg')
+
+    # TODO: Loading of HDR file list seems to be wrong. Fix it
+    source_dir_hdr_file_list_jpg = list(glob(os.path.join(
+        source_dir,
+        HDR_INPUT_FILENAME_PATTERN_LIST_JPG)))
+    source_dir_hdr_file_list_png = list(glob(os.path.join(
+        source_dir,
+        HDR_INPUT_FILENAME_PATTERN_LIST_PNG)))
+    source_dir_hdr_file_list = sorted(source_dir_hdr_file_list_jpg + source_dir_hdr_file_list_png)
+    if len(source_dir_hdr_file_list_png) != 0:
+        store_target.update_state(FILE_TYPE_OUT, 'png')  # If we have png files in the input, we default to png for the output
+    elif len(source_dir_hdr_file_list_jpg) != 0:
+        store_target.update_state(FILE_TYPE_OUT, 'jpg')
+
+
+    if len(source_dir_file_list) == 0:
+        tk.messagebox.showerror("Error!",
+                                "No files match pattern name. "
+                                "Please specify new one and try again")
+        ui_manager.frames_target_dir.delete(0, 'end')
+        return 0
+
+    # Sanity check for current_frame
+    if current_frame >= len(source_dir_file_list):
+        current_frame = 0
+        store_target.update_state(CURRENT_FRAME, current_frame)
+
+    # Extract frame number from filename
+    temp = re.findall(r'\d+', os.path.basename(source_dir_file_list[0]))
+    numbers = list(map(int, temp))
+    first_absolute_frame = numbers[0]
+    last_absolute_frame = first_absolute_frame + len(source_dir_file_list)-1
+    ui_manager.frame_slider.config(from_=0, to=len(source_dir_file_list)-1)
+    refresh_current_frame_ui_info(current_frame, first_absolute_frame)
+
+    # In order to determine template dimensons, no not take the first frame, as often
+    # it is not so good. Take a frame 10% ahead in the set
+    sample_frame = int(len(source_dir_file_list) * 0.1)
+    aux_image = cv2.imread(source_dir_file_list[sample_frame], cv2.IMREAD_UNCHANGED)
+    # Set frame dimensions in global variable, for use everywhere
+    store_target.update_state(FRAME_WIDTH, aux_image.shape[1])
+    store_target.update_state(FRAME_HEIGHT, aux_image.shape[0])
+    template_manager.set_scale_and_refresh_all(aux_image)    # frame_width set by get_source_dir_file_list
+
+    return len(source_dir_file_list)

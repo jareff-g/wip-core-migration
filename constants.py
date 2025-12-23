@@ -50,6 +50,19 @@ JOB_LIST_DESCRIPTION_LENGTH = 100
 END_TOKEN = "TERMINATE_PROCESS"
 LAST_ITEM_TOKEN = "LAST_ITEM"
 
+# --- Filename patterns ---
+FRAME_INPUT_FILENAME_PATTERN_LIST_JPG = "picture-?????.jpg"
+HDR_INPUT_FILENAME_PATTERN_LIST_JPG = "picture-?????.3.jpg"   # In HDR mode, use 3rd frame as guide
+FRAME_INPUT_FILENAME_PATTERN_LIST_PNG = "picture-?????.png"
+HDR_INPUT_FILENAME_PATTERN_LIST_PNG = "picture-?????.3.png"
+FRAME_INPUT_FILENAME_PATTERN = "picture-%05d.%s"   # HDR frames using standard filename
+FRAME_HDR_INPUT_FILENAME_PATTERN = "picture-%05d.%1d.%s"   # HDR frames using standard filename
+FRAME_OUTPUT_FILENAME_PATTERN = "picture_out-%05d.%s"
+TITLE_OUTPUT_FILENAME_PATTERN = "picture_out(title)-%05d.%s"
+FRAME_OUTPUT_FILENAME_PATTERN_FOR_FFMPEG = "picture_out-%05d."
+TITLE_OUTPUT_FILENAME_PATTERN_FOR_FFMPEG = "picture_out(title)-%05d."
+FRAME_CHECK_OUTPUT_FILENAME_PATTERN = "picture_out-?????.%s"  # Req. for ffmpeg gen.
+
 # --- Data Shared store ids ---
 CONFIG_MANAGER = "config_manager"
 TEMPLATE_MANAGER = "template_manager"
@@ -135,6 +148,10 @@ RECTANGLE_BASE_IMAGE = "rectangle_base_image"
 RECTANGLE_ORIGINAL_IMAGE = "rectangle_original_image"
 RECTANGLE_LINE_THICKNESS = "rectangle_line_thickness"
 CROP_AREA_DEFINED = "crop_area_defined"
+SOURCE_DIR_FILE_LIST = "source_dir_file_list"
+TARGET_DIR_FILE_LIST = "target_dir_file_list"
+FILE_TYPE_OUT = "file_type_out"
+
 
 
 

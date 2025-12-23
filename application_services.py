@@ -47,7 +47,8 @@ from constants import (CONFIG_MANAGER, TEMPLATE_MANAGER, EVENT_BUS, IGNORE_CONFI
                        CONVERT_LOOP_EXIT_REQUESTED, FIRST_ABSOLUTE_FRAME, FRAME_SCALE_REFRESH_DONE, 
                        FRAME_SCALE_REFRESH_PENDING, RECTANGLE_ACTION_ONGOING, RECTANGLE_REFRESH_REQUIRED,
                        RECTANGLE_BASE_IMAGE, RECTANGLE_ORIGINAL_IMAGE, RECTANGLE_LINE_THICKNESS,
-                       CROP_AREA_DEFINED)
+                       CROP_AREA_DEFINED, SOURCE_DIR_FILE_LIST, TARGET_DIR_FILE_LIST, FILE_TYPE_OUT,
+                       FRAME_WIDTH, FRAME_HEIGHT)
 
 
 # --- 1. The Centralized State Store (Data Access) ---
@@ -147,7 +148,12 @@ class AppStateStore:
             RECTANGLE_BASE_IMAGE: None, 
             RECTANGLE_ORIGINAL_IMAGE: None,
             RECTANGLE_LINE_THICKNESS: 1,
-            CROP_AREA_DEFINED: False
+            CROP_AREA_DEFINED: False,
+            SOURCE_DIR_FILE_LIST: [],
+            TARGET_DIR_FILE_LIST: [],
+            FILE_TYPE_OUT: "",
+            FRAME_WIDTH: 2028,
+            FRAME_HEIGHT: 1520
         }
 
     def get_state(self, key: str):

@@ -69,7 +69,8 @@ from constants import (CONFIG_MANAGER, TEMPLATE_MANAGER, EVENT_BUS, IGNORE_CONFI
                        PRECISE_TEMPLATE_MATCH, FFMPEG_INSTALLED, FFMPEG_INSTALLED, IS_DEMO, USE_SIMPLE_STABILIZATION,
                        FORCE_SMALL_SIZE, NUM_THREADS, BATCH_AUTOSTART, GENERATE_CSV, DISABLE_TOOLTIPS, LOG_LEVEL,
                        CONVERT_LOOP_RUNNING, CONVERT_LOOP_EXIT_REQUESTED, FIRST_ABSOLUTE_FRAME, FRAME_SCALE_REFRESH_DONE, 
-                       FRAME_SCALE_REFRESH_PENDING, RECTANGLE_ACTION_ONGOING)
+                       FRAME_SCALE_REFRESH_PENDING, RECTANGLE_ACTION_ONGOING, SOURCE_DIR_FILE_LIST, TARGET_DIR_FILE_LIST,
+                       FILE_TYPE)
 
 
 
@@ -298,7 +299,7 @@ class UIManager:
             else:
                 job_list_listbox_disabled = False
         # Handle a few specific widgets having extra conditions
-        if len(source_dir_file_list) == 0:
+        if len(self.store.get_state(SOURCE_DIR_FILE_LIST)):
             self.perform_stabilization_checkbox.config(state=DISABLED)
             self.perform_cropping_checkbox.config(state=DISABLED)
             self.cropping_btn.config(state=DISABLED)
@@ -622,6 +623,7 @@ class UIManager:
         self.config_manager.set_video_target_dir(self.video_target_dir_str.get())
 
     def select_scale_frame(self, selected_frame):
+        source_dir_file_list = self.store.get_state(SOURCE_DIR_FILE_LIST)
         if int(selected_frame) >= len(source_dir_file_list):
             selected_frame = str(len(source_dir_file_list) - 1)
         if not self.store.get_state(CONVERT_LOOP_RUNNING) and not self.store.get_state(BATCH_JOB_RUNNING): # Do not refresh during conversion loop
@@ -713,6 +715,10 @@ class UIManager:
     # ------------------------------------------------------------------
 
     def select_custom_template(self):
+        # Load frequently used items from shared store
+        source_dir_file_list = self.store.get_state(SOURCE_DIR_FILE_LIST)
+        current_frame = self.store.get_state(CURRENT_FRAME)
+        file_type = self.store.get_state(FILE_TYPE)
         # First, define custom template name and filename in case it needs to be deleted
         # Template Name = Last folder in the path, plus Frame From,  Frame to it not encoding all
         template_name = f"{os.path.split(self.store.get_state(SOURCE_DIR))[-1]}"
